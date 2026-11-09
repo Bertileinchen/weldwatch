@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+build/
+dist/
+*.spec
+.venv/
+
+# Firmendaten NICHT ins Repository: Zeichnungen, Normtabellen, Vorlage, Ergebnisse
+*.pdf
+*.xlsx
+*.xls
+*.png
+*.jpg
+ausgabe/
+out/
+tesseract/
+python_pfad.txt
+!vorlage/.gitkeep
