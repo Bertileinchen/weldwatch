@@ -151,12 +151,6 @@ def find_symbols(segs, words, cfg, word_provider=None):
             else:
                 split.append(sg)
         near = split
-        if cfg.get("pattern_mode"):   # Kreis (Rundumnaht) am Ende der Bezugslinie: viele kurze Bruchstücke dicht am Linienende
-            for ex in (x0, x1):
-                if sum(1 for q in segs if q.length < 6.5 and abs(q.x0 - q.x1) + abs(q.y0 - q.y1) > 0.5
-                       and abs(((q.x0 + q.x1) / 2) - ex) <= 12 and abs(((q.y0 + q.y1) / 2) - y) <= 10) >= 4 \
-                        and "umlaufend" not in f.notes:
-                    f.notes.append("umlaufend")
         if cfg.get("pattern_mode"):   # zerrissene Schrägstriche erst verbinden, dann kurze Striche (Ziffern/Rauschen) verwerfen
             near = [q for q in _chain_diags(near) if q.length >= cfg.get("symbol_min_len", 0)
                     and not (_txt(q) and q.length < 14.5)]   # Textstriche (Ziffernhöhe ~13 pt) raus, lange Symbolstriche bleiben
@@ -209,6 +203,8 @@ def find_symbols(segs, words, cfg, word_provider=None):
                 f.sides[side] = d
         if not f.sides:
             continue
+        if cfg.get("ring_fn") and any(cfg["ring_fn"](ex, y) for ex in (x0, x1)) and "umlaufend" not in f.notes:
+            f.notes.append("umlaufend")     # Kreis am Linienende (Rundumnaht)
         if cfg.get("pattern_mode"):
             lead = [q for q in segs if q.length >= 8 and abs(q.x0 - q.x1) > 0.05 and abs(q.y0 - q.y1) > 0.05
                     and any(math.hypot(px - ex, py - y) <= (16.0 if "umlaufend" in f.notes else 3 * tol)
@@ -227,6 +223,9 @@ def find_symbols(segs, words, cfg, word_provider=None):
     # Texte zuordnen
     for f in out:
         _assign_text(f, f.words, cfg)
+    if cfg.get("pattern_mode"):
+        # Raster: ganz ohne lesbares Maß und ohne Werkstoffgruppe ist es fast immer Beschriftung (z. B. "Schnitt A-A"), keine Naht
+        out = [f for f in out if f.groups or any(d.get("size") for d in f.sides.values())]
     return out
 
 def _assign_text(f, words, cfg):
@@ -242,6 +241,9 @@ def _assign_text(f, words, cfg):
         d["spec"] = " ".join(w.text for w in right if SPEC.match(w.text))
         for w in ws:
             g = parse_group_token(w.text)
+            if not g:   # Gruppe klebt an Folgetext, z. B. "(22)x30(100)"
+                m = re.match(r"^(\(\s*\d{1,2}(?:\s*[/+]\s*\d{1,2})?\s*\))", w.text)
+                g = parse_group_token(m.group(1)) if m else None
             if g and not f.groups:
                 f.groups = g
         d["words"] = [w.text for w in ws]

@@ -134,33 +134,132 @@ def detect_segments(mask, dpi):
             segs.append(Seg(x0 * k, y0 * k, x1 * k, y1 * k))
     return segs
 
+_RING_CACHE = {}
+
+def _ring_kernels(k):
+    key = round(k, 3)
+    if key not in _RING_CACHE:
+        ks = []
+        for r in (4.0, 4.8, 5.6, 6.4):
+            rp = r * k; n = int(rp * 2 + 5) | 1
+            yy, xx = np.mgrid[:n, :n] - n // 2
+            d = np.hypot(xx, yy)
+            ring = ((d >= rp - 1.0) & (d <= rp + 1.0)).astype(np.float32)
+            inner = (d <= rp * 0.55).astype(np.float32)
+            ks.append((ring / ring.sum(), inner / inner.sum()))
+        _RING_CACHE[key] = ks
+    return _RING_CACHE[key]
+
+def ring_near(mask, dpi, ex, ey, reach=13.0):
+    """Gibt es am Ende einer Bezugslinie (ex, ey in pt) einen kleinen Kreis (Rundumnaht-Zeichen, Ø ~8-13 pt)?
+    Ring: Rand fast lückenlos gesetzt, Innenfläche leer."""
+    k = dpi / 72.0
+    pad = int(8 * k)
+    x0 = max(0, int((ex - reach) * k) - pad); x1 = int((ex + reach) * k) + pad
+    y0 = max(0, int((ey - reach) * k) - pad); y1 = int((ey + reach) * k) + pad
+    crop = mask[y0:y1, x0:x1]
+    if crop.size == 0 or crop.sum() == 0:
+        return False
+    D = cv2.dilate(crop, np.ones((3, 3), np.uint8)).astype(np.float32) / 255.0
+    ccx, ccy = ex * k - x0, ey * k - y0
+    lim = reach * k
+    for ring, inner in _ring_kernels(k):
+        R = cv2.filter2D(D, -1, ring, borderType=cv2.BORDER_CONSTANT)
+        I = cv2.filter2D(D, -1, inner, borderType=cv2.BORDER_CONSTANT)
+        ok = (R >= 0.75) & (I <= 0.4)
+        yy, xx = np.nonzero(ok)
+        if len(yy) and np.any(np.hypot(xx - ccx, yy - ccy) <= lim):
+            return True
+    return False
+
 # ------------------------------------------------------------------ OCR
-def ocr_symbol_words(tess, mask, dpi, found, cfg):
-    """Texte rund um eine Bezugslinie lesen: oberhalb und unterhalb getrennt (nur Anmerkungsfarbe, vergrößert)."""
+_GRP = re.compile(r"^\(\s*(\d{1,2})(?:\s*[/+]\s*(\d{1,2}))?\s*\)$")
+_VALID_GR = set(range(1, 12)) | set(range(21, 27))
+
+def _read_cluster(tess, img, gray=None):
+    """Eine Zeichengruppe lesen. Sieht sie nach Werkstoffgruppe '(..)' aus, mehrere Aufbereitungen abstimmen lassen
+    und nur gültige Gruppen (ISO TR 15608: 1-11, 21-26) akzeptieren."""
+    from collections import Counter
+    cfgs = "--psm 7 -c tessedit_char_whitelist=0123456789()xXazs/+.,n"
+    first = None
+    votes = Counter()
+    for fx in (4, 3, 6):
+        for dil in (0, 1):
+            if gray is not None:
+                t = cv2.resize(gray, None, fx=fx, fy=fx, interpolation=cv2.INTER_CUBIC)
+                if dil:
+                    t = cv2.erode(t, np.ones((2, 2), np.uint8))     # dunkle Striche etwas kräftigen
+            else:
+                t = cv2.dilate(img, np.ones((2, 2), np.uint8)) if dil else img
+                t = 255 - cv2.resize(t, None, fx=fx, fy=fx, interpolation=cv2.INTER_CUBIC)
+            t = cv2.copyMakeBorder(t, 30, 30, 30, 30, cv2.BORDER_CONSTANT, value=255)
+            r = tess.image_to_string(t, config=cfgs).strip().replace(" ", "")
+            if first is None:
+                first = r
+                if not ("(" in r or ")" in r):
+                    return r                       # kein Gruppenkandidat -> eine Lesung genügt
+            m = _GRP.match(r)
+            if m and all(int(g) in _VALID_GR for g in m.groups() if g):
+                votes[r] += 1
+    if votes:
+        return votes.most_common(1)[0][0]
+    return first or ""
+
+def ocr_symbol_words(tess, mask, dpi, found, cfg, rgb=None):
+    """Texte rund um eine Bezugslinie lesen (Maß, Werkstoffgruppe, Abgesetzt-Angabe).
+    Vorgehen: Symbol- und Hinweislinien (lange/dünne Komponenten) entfernen, die übrigen Zeichen
+    zu Gruppen nach waagrechtem Abstand bündeln und jede Gruppe einzeln lesen."""
     k = dpi / 72.0
     band = cfg["text_band"]
     words = []
-    for (ya, yb) in ((found.y - band, found.y + 0.8), (found.y - 0.8, found.y + band)):
+    for (ya, yb) in ((found.y - band, found.y - 0.8), (found.y + 0.8, found.y + band)):
         x0 = max(0, int((found.x0 - 3) * k)); x1 = int((found.x1 + 3) * k)
         y0 = max(0, int(ya * k)); y1 = int(yb * k)
         crop = mask[y0:y1, x0:x1]
         if crop.size == 0 or crop.sum() == 0:
             continue
-        img = 255 - cv2.resize(crop, None, fx=4, fy=4, interpolation=cv2.INTER_CUBIC)
-        img = cv2.copyMakeBorder(img, 24, 24, 24, 24, cv2.BORDER_CONSTANT, value=255)
-        for psm in (7, 11):
-            d = tess.image_to_data(img, config=f"--psm {psm} -c tessedit_char_whitelist=0123456789()xXazs/+.,n",
-                                   output_type=tess.Output.DICT)
-            got = []
-            for i, t in enumerate(d["text"]):
-                t = t.strip()
-                if not t or float(d["conf"][i]) < 10:
-                    continue
-                wx0 = (d["left"][i] - 24) / 4 / k + x0 / k; wy0 = (d["top"][i] - 24) / 4 / k + y0 / k
-                got.append(Word(t, wx0, wy0, wx0 + d["width"][i] / 4 / k, wy0 + d["height"][i] / 4 / k))
-            if got:
-                words += got
-                break
+        n, lab, st, _ = cv2.connectedComponentsWithStats(crop, connectivity=8)
+        comps = []
+        for i in range(1, n):
+            x, y, w, h, area = st[i]
+            wp, hp = w / k, h / k
+            if area < 8:
+                continue
+            if hp > 15.5:                                  # senkrechte Symbolstriche, Hinweislinien
+                continue
+            if hp < 5.5 and wp > 6:                        # waagrechte Reste
+                continue
+            if max(wp, hp) > 8 and area / float(w * h) < 0.2:   # dünne Schrägstriche
+                continue
+            comps.append((x, y, w, h, i))
+        comps.sort()
+        clusters = []
+        for c in comps:
+            if clusters and c[0] - max(q[0] + q[2] for q in clusters[-1]) < 4.5 * k:
+                clusters[-1].append(c)
+            else:
+                clusters.append([c])
+        for cl in clusters:
+            xa = min(q[0] for q in cl); xb = max(q[0] + q[2] for q in cl)
+            ya_ = min(q[1] for q in cl); yb_ = max(q[1] + q[3] for q in cl)
+            img = np.zeros((yb_ - ya_, xb - xa), np.uint8)
+            for q in cl:
+                m = (lab[q[1]:q[1] + q[3], q[0]:q[0] + q[2]] == q[4])
+                yy, xx = m.nonzero()
+                img[yy + q[1] - ya_, xx + q[0] - xa] = 255
+            gray = None
+            if rgb is not None:   # Graustufen statt Binärmaske: die Maske verklebt dicht stehende Ziffern ("22")
+                sel = cv2.dilate(img, np.ones((3, 3), np.uint8)) > 0
+                r = rgb[y0 + ya_:y0 + yb_, x0 + xa:x0 + xb, 0]
+                gray = np.where(sel, r, 255).astype(np.uint8)
+            txt = _read_cluster(tess, img, gray)
+            parts = txt.split()
+            if not parts:
+                continue
+            gx0 = (x0 + xa) / k; gx1 = (x0 + xb) / k; gy0 = (y0 + ya_) / k; gy1 = (y0 + yb_) / k
+            wpart = (gx1 - gx0) / len(parts)
+            for j, t in enumerate(parts):
+                words.append(Word(t, gx0 + j * wpart, gy0, gx0 + (j + 1) * wpart, gy1))
     return words
 
 def ocr_page_words(tess, rgb, dpi, tile=1500, ov=150, scale=1.5):

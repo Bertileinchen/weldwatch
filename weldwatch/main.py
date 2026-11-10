@@ -28,12 +28,12 @@ def process_raster(pdf_path, name, cfg):
         if ex is None:
             notes.append("Block 'allgemeine Angaben' nicht gefunden (nichts ignoriert).")
         dn, title = titleblock.read_title(pw, cfg, name)
-        provider = lambda f: raster.ocr_symbol_words(tess, mask, dpi, f, cfg)
+        provider = lambda f: raster.ocr_symbol_words(tess, mask, dpi, f, cfg, rgb)
     else:
         notes.append("Tesseract (OCR) nicht gefunden: Maße und Werkstoffgruppen werden NICHT gelesen, "
                      "Block 'allgemeine Angaben' wird nicht ignoriert. Siehe README.")
         provider = lambda f: []
-    rcfg = dict(cfg, tol=cfg["raster_tol"], symbol_min_len=cfg["raster_symbol_min_len"], pattern_mode=True)
+    rcfg = dict(cfg, tol=cfg["raster_tol"], symbol_min_len=cfg["raster_symbol_min_len"], pattern_mode=True, ring_fn=lambda ex, ey: raster.ring_near(mask, dpi, ex, ey))
     found = symbols.find_symbols(segs, [], rcfg, word_provider=provider)
     return g, dn, title, ex, found, notes
 
