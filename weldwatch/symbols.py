@@ -248,7 +248,7 @@ def _assign_text(f, words, cfg):
                 f.groups = g
         d["words"] = [w.text for w in ws]
 
-# ---------------------------------------------------------------- Altbezeichnungen (P&T) als Text
+# ---------------------------------------------------------------- Altbezeichnungen als Text
 PT = re.compile(r"^(L|I|V|VH|VX|VK|Y|YH|YX|YK)(\d+(?:,\d)?)-(\d+)$")
 PT_MAP = {"L": ("Kehlnaht", "a"), "I": ("I-Naht", "I"), "V": ("V-Naht", "V"), "VH": ("HV-Naht", "HV"),
           "VX": ("DV-Naht", "DV"), "VK": ("DHV-Naht", "DHV"), "Y": ("Y-Naht", "Y"), "YH": ("HY-Naht", "HY"),

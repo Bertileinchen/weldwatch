@@ -68,7 +68,7 @@ def build_entries(found, pt_labels, grid, ex, cfg):
         if exclude.inside(ex, w.cx, w.cy):
             continue
         out.append(Entry(grid.square(w.cx, w.cy) if grid else "-", w.cx, w.cy, p["art"], p["angabe"], "",
-                         format_groups(None, cfg), [f"interne Bezeichnung {p['pt']}"], True, "P&T",
+                         format_groups(None, cfg), [f"interne Bezeichnung {p['pt']}"], True, "Altbezeichnung",
                          (w.x0 - 4, w.y0 - 4, w.x1 + 4, w.y1 + 4)))
     out.sort(key=lambda e: (e.square[0], int(e.square[1:]) if e.square[1:].isdigit() else 0, e.y, e.x))
     for i, e in enumerate(out, 1):
