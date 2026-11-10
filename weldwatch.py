@@ -3,32 +3,47 @@ import os, sys, traceback
 def _basis():
     return os.path.dirname(sys.executable) if getattr(sys, "frozen", False) else os.path.dirname(os.path.abspath(__file__))
 
-def _lauf():
+def _konsole_dialog():
     from weldwatch.main import main
+    # Alte Texteingabe (Aufruf mit --konsole): Pfad abfragen, dann Auswertung ohne Prüf-Fenster
+    print("WeldWatch - Schweißnähte aus Zeichnungen in den Prüfplan\n")
+    pfad = input("PDF-Datei oder Ordner (hier hineinziehen oder Pfad einfügen, dann Enter): ").strip().strip('"')
+    if not pfad:
+        print("Kein Pfad angegeben."); return
+    k = input("Kontroll-PDF mit markierten Funden erzeugen? (j/n): ").strip().lower()
+    main([pfad, "-o", os.path.join(_basis(), "ausgabe")] + (["--kontroll"] if k.startswith("j") else []))
+    print("\nFertig. Ergebnis im Ordner 'ausgabe' neben der exe.")
+
+def _lauf():
+    """True, wenn das Prüf-Fenster gelaufen ist (dann keine Konsolen-Abfrage am Ende)."""
     args = sys.argv[1:]
-    interaktiv = not args
-    if interaktiv:
-        # Doppelklick: Pfad abfragen (PDF oder Ordner per Drag&Drop ins Fenster ziehen geht auch)
-        print("WeldWatch - Schweißnähte aus Zeichnungen in den Prüfplan\n")
-        pfad = input("PDF-Datei oder Ordner (hier hineinziehen oder Pfad einfügen, dann Enter): ").strip().strip('"')
-        if not pfad:
-            print("Kein Pfad angegeben."); return
-        k = input("Kontroll-PDF mit markierten Funden erzeugen? (j/n): ").strip().lower()
-        args = [pfad, "-o", os.path.join(_basis(), "ausgabe")] + (["--kontroll"] if k.startswith("j") else [])
+    # Doppelklick (ohne Argumente) oder Projektdatei (.wwp) -> Prüf-Fenster mit Erkennung, Bearbeitung, Projektdatei
+    if not args or args == ["--gui"] or (len(args) == 1 and args[0].lower().endswith(".wwp")):
+        from weldwatch.gui import start
+        start(args[0] if args and args[0] != "--gui" else None)
+        return True
+    if args == ["--konsole"]:
+        _konsole_dialog()
+        return False
+    # Kommandozeile / Auswerten.bat: wie bisher direkt Excel ohne Prüf-Fenster
+    from weldwatch.main import main
     main(args)
-    if interaktiv or not sys.stdin or True:
-        print("\nFertig. Ergebnis im Ordner 'ausgabe' neben der exe.")
+    print("\nFertig. Ergebnis im Ordner 'ausgabe'.")
+    return False
 
 if __name__ == "__main__":
+    gui_lauf, code = False, 0
     try:
-        _lauf()
+        gui_lauf = _lauf()
     except SystemExit as e:
         if e.code not in (0, None):
             print("\nFehler beim Start (Code %s)." % e.code)
+            code = 1
     except BaseException:
-        print("\nFEHLER:\n"); traceback.print_exc()
-    finally:
+        print("\nFEHLER:\n"); traceback.print_exc(); code = 1
+    if not gui_lauf:
         try:
             input("\nEnter drücken zum Schließen ...")
         except Exception:
             pass
+    sys.exit(code)

@@ -13,6 +13,7 @@ dist/
 *.png
 *.jpg
 ausgabe/
+*.wwp
 out/
 tesseract/
 python_pfad.txt

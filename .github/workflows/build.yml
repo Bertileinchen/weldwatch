@@ -21,11 +21,16 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt pyinstaller
       - name: Syntax-/Importtest
-        run: python -c "import weldwatch.main"
+        run: python -c "import weldwatch.main, weldwatch.gui"
+      - name: Tests (Projektdatei, Zusammenführen, Excel nur nach Prüfung)
+        run: python -m unittest discover -s tests -v
+      - name: Rauchtest Prüf-Fenster (echtes Tk)
+        timeout-minutes: 5
+        run: python tests/gui_smoke.py
       - name: exe bauen
         run: >
           pyinstaller --noconfirm --onedir --name WeldWatch
-          --collect-all pypdfium2 --collect-all pdfplumber --collect-all pdfminer --collect-all cv2
+          --collect-all pypdfium2 --collect-all pdfplumber --collect-all pdfminer --collect-all cv2 --collect-all tkinterdnd2
           weldwatch.py
       - name: Konfiguration und Ordner ergänzen
         shell: pwsh
@@ -44,7 +49,17 @@ jobs:
           & dist/WeldWatch/tesseract/tesseract.exe --version
           if (-not (Test-Path dist/WeldWatch/tesseract/tessdata/eng.traineddata)) { throw "eng.traineddata fehlt" }
       - name: exe-Start prüfen
-        run: dist/WeldWatch/WeldWatch.exe --help
+        shell: pwsh
+        run: |
+          dist/WeldWatch/WeldWatch.exe --help
+          if ($LASTEXITCODE -ne 0) { throw "exe --help fehlgeschlagen" }
+      - name: Prüf-Fenster der gebauten exe starten (Selbsttest)
+        shell: pwsh
+        timeout-minutes: 3
+        run: |
+          $env:WELDWATCH_SELBSTTEST = "1"
+          $p = Start-Process -FilePath dist/WeldWatch/WeldWatch.exe -PassThru -Wait
+          if ($p.ExitCode -ne 0) { throw "Prüf-Fenster startet nicht (Exitcode $($p.ExitCode))" }
       - uses: actions/upload-artifact@v4
         with:
           name: WeldWatch-windows

@@ -55,6 +55,7 @@ def process(pdf_path, args, cfg):
         if len(pdf.pages) > 1:
             notes.append(f"Datei hat {len(pdf.pages)} Seiten, ausgewertet wird nur Seite 1.")
         page = pdf.pages[0]
+        seite = (float(page.width), float(page.height))
         kind = vector.page_kind(page)
         if kind == "leer":
             return dict(name=name, status="Seite leer / nicht lesbar", n=0)
@@ -87,7 +88,7 @@ def process(pdf_path, args, cfg):
         kontroll.save_pdf(img, os.path.join(args.out, f"{name}_Kontrolle.pdf"))
     return dict(name=name, status="ok", n=len(entries), pruefen=sum(1 for e in entries if not e.ok),
                 ignoriert=ex is not None, notes=notes, entries=entries, dn=dn, title=title,
-                source=os.path.basename(pdf_path))
+                source=os.path.basename(pdf_path), grid=g, ex=ex, seite=seite)
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Schweißnähte aus Zeichnungen (Vektor-PDF) in den Prüfplan übernehmen")

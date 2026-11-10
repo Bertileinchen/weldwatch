@@ -18,7 +18,7 @@ class Word:
     def cy(self): return (self.y0 + self.y1) / 2
 
 def _is_annot(color, cfg):
-    if color is None or len(color) != 3:
+    if not isinstance(color, (list, tuple)) or len(color) != 3:
         return False
     t = cfg["annot_color_tol"]
     return all(abs(a - b) <= t for a, b in zip(color, cfg["annot_color"]))

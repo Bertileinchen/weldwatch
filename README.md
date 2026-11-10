@@ -3,7 +3,25 @@
 Liest **Vektor-PDF-Zeichnungen** (zuverlässig) und **Rasterbilder/Scans** (EXPERIMENTELL) und erstellt je Zeichnung
 einen Prüfplan im Format der Firmenvorlage (Blatt SNP). Läuft komplett **offline**.
 
-## Benutzung
+## Prüf-Fenster (Standard beim Doppelklick auf die exe)
+`WeldWatch.exe` ohne Argumente öffnet das Prüf-Fenster (aus dem Quellcode: `Pruefen.bat`). PDF-Datei, Ordner oder Projektdatei (`.wwp`)
+per Drag & Drop hineinziehen oder über *Öffnen* wählen. Danach läuft die Erkennung im Hintergrund (A0-Scans brauchen mehrere Minuten).
+- **Zeichnung mit Markierungen:** Mausrad = Zoom, ziehen = Verschieben. Blau = Vorschlag, orange = unsichere Erkennung, grün = bestätigt,
+  türkis = geändert, violett = selbst gesetzt, grau = gelöscht, rot = gewählt.
+- **Naht anklicken** (oder in der Liste wählen): Planquadrat, Nahtart, Dicke, Zeichnungsangabe, Werkstoffgruppe und Bemerkung ändern.
+  *Bestätigen* (Strg+Enter) springt zur nächsten offenen Naht, *Löschen* (Entf) verwirft eine Naht (Wiederherstellen möglich).
+- **Fehlende Naht:** *Neue Naht setzen* (A), dann in die Zeichnung klicken oder einen Rahmen aufziehen und die Daten eintragen.
+- **Excel erst nach vollständiger Prüfung:** *Datei > Excel-Prüfplan erstellen* ist erst möglich, wenn keine Naht mehr offen ist
+  (ungeprüft oder ohne Nahtart/Angabe). Gelöschte Nähte kommen nicht in die Liste.
+- **Projektdatei (`.wwp`):** Erkannte Nähte, Änderungen und Prüfstatus werden bei jeder Änderung automatisch gesichert (Standard: Ordner
+  `ausgabe` neben der exe). Wird derselbe Ordner/dieselbe PDF erneut geöffnet, lässt sich das Projekt ohne neuen Lauf öffnen. Ein erneuter
+  Lauf (*Ansicht > Erkennung dieser Zeichnung wiederholen*) überschreibt nie geprüfte, geänderte, gelöschte oder selbst gesetzte Nähte.
+  *Speichern unter* legt das Projekt woanders ab. Die Projektdatei enthält keine Zeichnungen; die PDFs müssen am Ort bleiben
+  (verschobene PDFs werden neben der Projektdatei bzw. per Dialog gesucht; geänderte PDFs meldet das Programm).
+- Ergebnisse sind Vorschläge zur Prüfung durch eine Person. Die frühere Direkt-Auswertung ohne Fenster bleibt über die Kommandozeile
+  bzw. `Auswerten.bat` erhalten.
+
+## Benutzung (Kommandozeile)
 - **Doppelklick-Variante:** PDF-Datei oder ganzen Ordner auf `Auswerten.bat` ziehen
   (`Auswerten_mit_Kontrolle.bat` erzeugt zusätzlich ein Kontroll-PDF).
 - **Kommandozeile:** `python -m weldwatch.main <PDF oder Ordner> -o ausgabe [--kontroll]`
