@@ -19,14 +19,13 @@ class Entry:
 
 def _side_text(kind, d):
     size = d.get("size", "")
-    spec = d.get("spec", "")
     if kind == "Kehlnaht":
         core = size if size[:1] in ("a", "z") else (f"a{size}" if size else "a?")
     elif kind in PREFIX:
         core = f"{PREFIX[kind]}{size}" if size else f"{PREFIX[kind]}?"
     else:
         core = f"?{size}"
-    return (core + (" " + spec if spec else "")).strip()
+    return core.strip()   # abgesetzte Nähte (3x30(50)) bewusst weggelassen - ändern die WPS nicht
 
 def build_entries(found, pt_labels, grid, ex, cfg):
     out = []
@@ -42,7 +41,7 @@ def build_entries(found, pt_labels, grid, ex, cfg):
         if len(sides) == 2:
             rem.append("beidseitig")
             art = DOUBLE.get(kinds[0].rstrip("?"), "?") if kinds[0] == kinds[1] else " + ".join(kinds)
-            angabe = "/".join(_side_text(d["kind"].rstrip("?"), d) for _, d in sides)
+            angabe = "\n".join(_side_text(d["kind"].rstrip("?"), d) for _, d in sides)
         else:
             art = kinds[0].rstrip("?") if ok or kinds[0].endswith("?") else "Symbol unbekannt"
             angabe = _side_text(kinds[0].rstrip("?"), sides[0][1])

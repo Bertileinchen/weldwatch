@@ -61,8 +61,15 @@ def process(pdf_path, args, cfg):
             if ex is None:
                 notes.append("Block 'allgemeine Angaben' nicht gefunden (nichts ignoriert).")
             found = symbols.find_symbols(segs, words, cfg)
-        taken = [(f.x0, f.y - 24, f.x1, f.y + 24) for f in found]
+        def _erkannt(f):
+            return any(d["kind"] != "unbekannt" for d in f.sides.values())
+        taken = [(f.x0, f.y - 24, f.x1, f.y + 24) for f in found if _erkannt(f)]
         pt = symbols.find_pt_labels(words, taken)
+        # nicht erkanntes Symbol, in dem eine interne Bezeichnung (z. B. L3-1) steht -> die Bezeichnung zählt
+        for f in list(found):
+            if not _erkannt(f) and any(f.x0 - 2 <= p["word"].cx <= f.x1 + 2 and f.y - 24 <= p["word"].cy <= f.y + 24
+                                       for p in pt):
+                found.remove(f)
         entries = auswertung.build_entries(found, pt, g, ex, cfg)
     out_xlsx = os.path.join(args.out, f"{name}_Pruefplan.xlsx")
     output.write_excel(args.vorlage, out_xlsx, entries, dn, title, os.path.basename(pdf_path), notes,

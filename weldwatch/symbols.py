@@ -69,7 +69,7 @@ def _on_segment(p, c, tol):
                 return True
     return False
 
-def classify(comp, y, sgn, tol, base=()):
+def classify(comp, y, sgn, tol, base=(), dash_off=None):
     """Symbolart aus den Linien einer Komponente (Koordinate v = Höhe über der Bezugslinie)."""
     def v(py): return (py - y) * sgn
     base = list(base)
@@ -95,7 +95,8 @@ def classify(comp, y, sgn, tol, base=()):
         dtop = max(((ds.x0, ds.y0), (ds.x1, ds.y1)), key=lambda q: v(q[1]))
         dlow = min(((ds.x0, ds.y0), (ds.x1, ds.y1)), key=lambda q: v(q[1]))
         vlen = vs.length
-        if (math.hypot(vtop[0] - dtop[0], vtop[1] - dtop[1]) < tol * 2 and abs(v(dlow[1])) < tol * 2
+        base_ok = abs(v(dlow[1])) < tol * 2 or (dash_off is not None and abs(v(dlow[1]) - dash_off) < tol * 2)
+        if (math.hypot(vtop[0] - dtop[0], vtop[1] - dtop[1]) < tol * 2 and base_ok
                 and abs(abs(dlow[0] - vs.x0) - vlen) < max(2 * tol, 0.3 * vlen)):
             return "Kehlnaht"
         foot_v = min(vs.y0, vs.y1, key=lambda q: abs(v(q)))
@@ -148,32 +149,32 @@ def find_symbols(segs, words, cfg, word_provider=None):
             else:
                 split.append(sg)
         near = split
-        for side, sgn in (("up", -1), ("down", 1)):
-            side_segs = [s for s in near if all((py - y) * sgn >= -tol for py in (s.y0, s.y1))
-                         and not (_near(s.y0, s.y1, 0.05) and abs(s.y0 - y) > tol
-                                  and abs(abs(s.y0 - y) - cfg["dash_offset"]) < cfg["dash_offset_tol"])]
-            # Strichlinie (Kennzeichnungslinie) nicht als Symbol zählen
-            side_segs = [s for s in side_segs if not (_near(s.y0, s.y1, 0.05) and
-                         abs(abs(s.y0 - y) - cfg["dash_offset"]) < cfg["dash_offset_tol"])]
+        def attempt(side, sgn, yy, on_dash):
+            """Symbol einer Seite auswerten; yy = Grundlinie (Bezugslinie oder - bei Strichlinienseite - die Strichlinie)."""
+            side_segs = [s for s in near if all((py - yy) * sgn >= -tol for py in (s.y0, s.y1))
+                         and (on_dash or not (_near(s.y0, s.y1, 0.05) and abs(s.y0 - yy) > tol
+                                  and abs(abs(s.y0 - yy) - cfg["dash_offset"]) < cfg["dash_offset_tol"]))]
+            if not on_dash:   # Strichlinie (Kennzeichnungslinie) nicht als Symbol zählen
+                side_segs = [s for s in side_segs if not (_near(s.y0, s.y1, 0.05) and
+                             abs(abs(s.y0 - yy) - cfg["dash_offset"]) < cfg["dash_offset_tol"])]
             tiny = [s for s in side_segs if s.length < 3.6]
-            if len(tiny) >= 3 and "Kreis (rundum?)" not in f.notes:
-                f.notes.append("Kreis (rundum?)")
+            if len(tiny) >= 3 and "umlaufend" not in f.notes:
+                f.notes.append("umlaufend")
             side_segs = [s for s in side_segs if s.length >= 3.6]
-            on_line = [s for s in side_segs if _near(s.y0, s.y1, 0.05) and abs(s.y0 - y) < tol]
+            on_line = [s for s in side_segs if _near(s.y0, s.y1, 0.05) and abs(s.y0 - yy) < tol]
             vd = [s for s in side_segs if s not in on_line]
-            start = [s for s in vd if any(abs(py - y) < tol and x0 + 1 < px < x1 - 1
+            start = [s for s in vd if any(abs(py - yy) < tol and x0 + 1 < px < x1 - 1
                                           for px, py in ((s.x0, s.y0), (s.x1, s.y1)))]
             if not start:
-                continue
+                return None
             if cfg.get("pattern_mode"):
-                kind, comp = classify_patterns(vd, y, sgn, tol, x0, x1)
+                kind, comp = classify_patterns(vd, yy, sgn, tol, x0, x1)
                 if kind is None:
-                    continue
-                f.sides[side] = dict(kind=kind, segs=comp,
-                                     xmin=min(min(q.x0, q.x1) for q in comp), xmax=max(max(q.x0, q.x1) for q in comp))
-                continue
+                    return None
+                return dict(kind=kind, segs=comp,
+                            xmin=min(min(q.x0, q.x1) for q in comp), xmax=max(max(q.x0, q.x1) for q in comp))
             comp = _component(start, vd, tol)
-            feet = [(px, py) for s in comp for px, py in ((s.x0, s.y0), (s.x1, s.y1)) if abs(py - y) < tol]
+            feet = [(px, py) for s in comp for px, py in ((s.x0, s.y0), (s.x1, s.y1)) if abs(py - yy) < tol]
             base = [s for s in on_line if s.length <= cfg["symbol_max_h"]
                     and sum(any(math.hypot(px - fx, py - fy) < tol for fx, fy in feet)
                             for px, py in ((s.x0, s.y0), (s.x1, s.y1))) >= 1
@@ -181,10 +182,20 @@ def find_symbols(segs, words, cfg, word_provider=None):
             # Dreiecksbasis: beide Enden an Fußpunkten
             base = [b for b in base if sum(any(math.hypot(px - fx, py - fy) < tol for fx, fy in feet)
                                            for px, py in ((b.x0, b.y0), (b.x1, b.y1))) == 2]
-            kind = classify(comp, y, sgn, tol, base)
+            kind = classify(comp, yy, sgn, tol, base, cfg.get("dash_offset"))
             comp = comp + base
-            f.sides[side] = dict(kind=kind, segs=comp,
-                                 xmin=min(min(s.x0, s.x1) for s in comp), xmax=max(max(s.x0, s.x1) for s in comp))
+            return dict(kind=kind, segs=comp,
+                        xmin=min(min(s.x0, s.x1) for s in comp), xmax=max(max(s.x0, s.x1) for s in comp))
+        for side, sgn in (("up", -1), ("down", 1)):
+            d = attempt(side, sgn, y, False)
+            if d is None and dash.get(side):
+                # CAD zeichnet das Symbol auf der Strichlinienseite manchmal ab der Strichlinie statt ab der Bezugslinie
+                ys = [t.y0 for t in H if _near(t.y0, y + sgn * cfg["dash_offset"], cfg["dash_offset_tol"])
+                      and min(t.x0, t.x1) >= x0 - tol and max(t.x0, t.x1) <= x1 + tol]
+                if ys:
+                    d = attempt(side, sgn, sorted(ys)[len(ys) // 2], True)
+            if d is not None:
+                f.sides[side] = d
         if not f.sides:
             continue
         if cfg.get("pattern_mode"):
@@ -195,6 +206,12 @@ def find_symbols(segs, words, cfg, word_provider=None):
                 continue
         if not f.has_dash and all(v["kind"] == "unbekannt" for v in f.sides.values()):
             continue
+        if not f.has_dash and not cfg.get("pattern_mode"):
+            lead = [q for q in segs if q.length >= 6 and abs(q.x0 - q.x1) > 0.05 and abs(q.y0 - q.y1) > 0.05
+                    and any(math.hypot(px - ex, py - y) <= 1.2 for px, py in ((q.x0, q.y0), (q.x1, q.y1))
+                            for ex in (x0, x1))]
+            if not lead:      # Maßkette / Form- und Lagetoleranzrahmen
+                continue
         out.append(f)
     # Texte zuordnen
     for f in out:

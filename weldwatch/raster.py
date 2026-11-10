@@ -107,7 +107,7 @@ def detect_segments(mask, dpi):
     lines = lsd.detect(mask)[0]
     diag = []
     if lines is not None:
-        for x0, y0, x1, y1 in lines[:, 0, :]:
+        for x0, y0, x1, y1 in np.asarray(lines).reshape(-1, 4):   # Form je nach OpenCV-Version (N,1,4) oder (N,4)
             ang = math.degrees(math.atan2(y1 - y0, x1 - x0)) % 180
             off = min(ang % 90, 90 - ang % 90)       # Abweichung von der nächsten Achse
             if off >= 12 and math.hypot(x1 - x0, y1 - y0) >= 8:
