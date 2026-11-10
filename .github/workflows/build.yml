@@ -9,6 +9,8 @@ on:
 jobs:
   build:
     runs-on: windows-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -47,3 +49,19 @@ jobs:
         with:
           name: WeldWatch-windows
           path: dist/WeldWatch
+      - name: Release bereitstellen (schneller Download über Releases)
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          Compress-Archive -Path dist/WeldWatch -DestinationPath WeldWatch-windows.zip -CompressionLevel Optimal
+          $kurz = $env:GITHUB_SHA.Substring(0, 7)
+          $notes = "Automatischer Build von Commit $kurz. ZIP entpacken und WeldWatch.exe starten. Ergebnisse sind Vorschläge zur Prüfung durch eine Person."
+          if ($env:GITHUB_REF -like "refs/tags/*") {
+            gh release create $env:GITHUB_REF_NAME WeldWatch-windows.zip --title "WeldWatch $env:GITHUB_REF_NAME" --notes $notes --verify-tag
+          } else {
+            # Rollierendes Release "latest": wird bei jedem Build ersetzt
+            gh release view latest *> $null
+            if ($LASTEXITCODE -eq 0) { gh release delete latest --cleanup-tag --yes }
+            gh release create latest WeldWatch-windows.zip --title "WeldWatch (aktueller Stand)" --notes $notes --target $env:GITHUB_SHA --prerelease
+          }
