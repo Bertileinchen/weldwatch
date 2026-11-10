@@ -135,9 +135,11 @@ def find_symbols(segs, words, cfg, word_provider=None):
             return any(b[0] <= sg.x0 <= b[2] and b[0] <= sg.x1 <= b[2] and b[1] <= sg.y0 <= b[3] and b[1] <= sg.y1 <= b[3]
                        for b in boxes)
         # Segmente, die innerhalb der Linie (nicht an den Enden) auf ihr ansetzen
-        near = [s for s in segs if cfg.get("symbol_min_len", 0) <= s.length < cfg["symbol_max_h"] * 1.6
+        minlen = 0 if cfg.get("pattern_mode") else cfg.get("symbol_min_len", 0)
+        near = [s for s in segs if minlen <= s.length < cfg["symbol_max_h"] * 1.6
                 and x0 - 2 <= min(s.x0, s.x1) and max(s.x0, s.x1) <= x1 + 2
-                and any(abs(py - y) <= cfg["symbol_max_h"] for py in (s.y0, s.y1)) and not _txt(s)]
+                and any(abs(py - y) <= cfg["symbol_max_h"] for py in (s.y0, s.y1))
+                and (not _txt(s) or cfg.get("pattern_mode"))]
         # Linien, die die Bezugslinie kreuzen (z. B. senkrechter Strich bei beidseitigen Symbolen), teilen
         split = []
         for sg in near:
@@ -149,6 +151,15 @@ def find_symbols(segs, words, cfg, word_provider=None):
             else:
                 split.append(sg)
         near = split
+        if cfg.get("pattern_mode"):   # Kreis (Rundumnaht) am Ende der Bezugslinie: viele kurze Bruchstücke dicht am Linienende
+            for ex in (x0, x1):
+                if sum(1 for q in segs if q.length < 6.5 and abs(q.x0 - q.x1) + abs(q.y0 - q.y1) > 0.5
+                       and abs(((q.x0 + q.x1) / 2) - ex) <= 12 and abs(((q.y0 + q.y1) / 2) - y) <= 10) >= 4 \
+                        and "umlaufend" not in f.notes:
+                    f.notes.append("umlaufend")
+        if cfg.get("pattern_mode"):   # zerrissene Schrägstriche erst verbinden, dann kurze Striche (Ziffern/Rauschen) verwerfen
+            near = [q for q in _chain_diags(near) if q.length >= cfg.get("symbol_min_len", 0)
+                    and not (_txt(q) and q.length < 14.5)]   # Textstriche (Ziffernhöhe ~13 pt) raus, lange Symbolstriche bleiben
         def attempt(side, sgn, yy, on_dash):
             """Symbol einer Seite auswerten; yy = Grundlinie (Bezugslinie oder - bei Strichlinienseite - die Strichlinie)."""
             side_segs = [s for s in near if all((py - yy) * sgn >= -tol for py in (s.y0, s.y1))
@@ -200,8 +211,8 @@ def find_symbols(segs, words, cfg, word_provider=None):
             continue
         if cfg.get("pattern_mode"):
             lead = [q for q in segs if q.length >= 8 and abs(q.x0 - q.x1) > 0.05 and abs(q.y0 - q.y1) > 0.05
-                    and any(math.hypot(px - ex, py - y) <= 3 * tol for px, py in ((q.x0, q.y0), (q.x1, q.y1))
-                            for ex in (x0, x1))]
+                    and any(math.hypot(px - ex, py - y) <= (16.0 if "umlaufend" in f.notes else 3 * tol)
+                            for px, py in ((q.x0, q.y0), (q.x1, q.y1)) for ex in (x0, x1))]   # Kreis am Linienende schiebt den Pfeil nach außen
             if not lead:
                 continue
         if not f.has_dash and all(v["kind"] == "unbekannt" for v in f.sides.values()):
@@ -255,11 +266,39 @@ def find_pt_labels(words, taken_boxes):
     return res
 
 # ---------------------------------------------------------------- Musterbasierte Erkennung (für Rasterbilder)
+def _chain_diags(side_segs, max_perp=2.2, max_gap=3.5, max_ang=8.0):
+    """Zerrissene Schrägstriche (Raster: Doppelkante / Lücke) zu einer Linie verbinden."""
+    diag = [s for s in side_segs if abs(s.x0 - s.x1) > 0.05 and abs(s.y0 - s.y1) > 0.05]
+    rest = [s for s in side_segs if s not in diag]
+    def ang(q): return math.degrees(math.atan2(q.y1 - q.y0, q.x1 - q.x0)) % 180
+    done = True
+    while done:
+        done = False
+        for i, a in enumerate(diag):
+            for b in diag[i + 1:]:
+                da = abs(ang(a) - ang(b)); da = min(da, 180 - da)
+                if da > max_ang: continue
+                L = math.hypot(a.x1 - a.x0, a.y1 - a.y0)
+                ux, uy = (a.x1 - a.x0) / L, (a.y1 - a.y0) / L
+                pts = [(b.x0, b.y0), (b.x1, b.y1)]
+                perp = max(abs((px - a.x0) * -uy + (py - a.y0) * ux) for px, py in pts)
+                if perp > max_perp: continue
+                ta = sorted((0.0, L)); tb = sorted(((px - a.x0) * ux + (py - a.y0) * uy) for px, py in pts)
+                if tb[1] < ta[0] - max_gap or tb[0] > ta[1] + max_gap: continue
+                lo, hi = min(ta[0], tb[0]), max(ta[1], tb[1])
+                n = Seg(a.x0 + lo * ux, a.y0 + lo * uy, a.x0 + hi * ux, a.y0 + hi * uy)
+                diag = [d for d in diag if d is not a and d is not b] + [n]
+                done = True
+                break
+            if done: break
+    return rest + diag
+
 def classify_patterns(side_segs, y, sgn, tol, x0, x1, cfg_no_i=True):
     """Sucht die typischen ISO-2553-Formen als Linienmuster; unabhängig von zufällig anliegenden Textstrichen.
     Rückgabe: (kind, used_segments) oder (None, [])"""
     def v(py): return (py - y) * sgn
     verts, diags = [], []
+    side_segs = _chain_diags(side_segs)
     for s in side_segs:
         if abs(s.x0 - s.x1) < 0.05 + 0.0 and True:
             lo, hi = sorted((v(s.y0), v(s.y1)))

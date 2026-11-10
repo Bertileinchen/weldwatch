@@ -86,14 +86,31 @@ def _axis_lines(mask, dpi, horizontal):
         opened = cv2.morphologyEx(bridged, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_RECT, (1, minlen)))
     n, lab, st, cen = cv2.connectedComponentsWithStats(opened, connectivity=8)
     out = []
+    lim = int(2.5 * k)
     for i in range(1, n):
         x, y, w, h, area = st[i]
-        if horizontal and h <= int(2.5 * k) and w >= minlen:
+        if horizontal and h <= lim and w >= minlen:
             yy = y + h / 2.0
             out.append((x, yy, x + w, yy))
-        elif not horizontal and w <= int(2.5 * k) and h >= minlen:
+        elif not horizontal and w <= lim and h >= minlen:
             xx = x + w / 2.0
             out.append((xx, y, xx, y + h))
+        elif (horizontal and w >= minlen and h > lim) or (not horizontal and h >= minlen and w > lim):
+            # Linie klebt an Ziffern/Kreis: nur die Zeilen (Spalten) mit der längsten Ausdehnung nehmen
+            comp = (lab[y:y + h, x:x + w] == i)
+            if not horizontal:
+                comp = comp.T
+            sums = comp.sum(axis=1)
+            best = sums.max()
+            if best < minlen:
+                continue
+            sel = np.where(sums >= 0.8 * best)[0]
+            if sel.max() - sel.min() + 1 > lim:
+                continue
+            pos = (y if horizontal else x) + (sel.min() + sel.max() + 1) / 2.0
+            cols = np.where(comp[sel].any(axis=0))[0]
+            a0, a1 = (x if horizontal else y) + cols.min(), (x if horizontal else y) + cols.max() + 1
+            out.append((a0, pos, a1, pos) if horizontal else (pos, a0, pos, a1))
     return out
 
 def detect_segments(mask, dpi):
