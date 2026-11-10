@@ -35,7 +35,7 @@ ignoriert, egal wo er steht. Im Kontroll-PDF ist er grau hinterlegt.
 ## Rasterbilder / Scans (experimentell)
 Seiten ohne Textebene werden automatisch als Raster ausgewertet: Die Anmerkungsebene wird über ihre **Farbe (Türkis)** aus dem Bild geholt,
 Linien werden erkannt, Maße und Werkstoffgruppen per **OCR (Tesseract)** gelesen. Voraussetzungen und Grenzen:
-- **Tesseract** muss vorhanden sein: portable Version in den Ordner `tesseract\` neben das Programm legen
+- **Tesseract** liegt der per GitHub Actions gebauten exe bereits im Ordner `tesseract\` bei. Selbst bauen/ohne Actions: portable Version in den Ordner `tesseract\` neben das Programm legen
   (`tesseract.exe` + Ordner `tessdata` mit `eng.traineddata`), oder Tesseract installieren. Ohne Tesseract werden nur Symbolformen erkannt,
   keine Maße/Gruppen, und der Block „allgemeine Angaben“ wird nicht ignoriert.
 - Funktioniert nur, wenn die Anmerkungen in der Farbe der Anmerkungsebene vorliegen (bei schwarz/weiß-Scans geht es nicht).

@@ -32,6 +32,15 @@ jobs:
           New-Item -ItemType Directory -Force dist/WeldWatch/vorlage | Out-Null
           Copy-Item vorlage/README.txt dist/WeldWatch/vorlage/
           Copy-Item README.md dist/WeldWatch/
+      - name: Tesseract (OCR) mitliefern
+        shell: pwsh
+        run: |
+          choco install tesseract --no-progress -y
+          $src = "C:\Program Files\Tesseract-OCR"
+          if (-not (Test-Path "$src\tesseract.exe")) { throw "Tesseract nicht gefunden in $src" }
+          Copy-Item $src dist/WeldWatch/tesseract -Recurse
+          & dist/WeldWatch/tesseract/tesseract.exe --version
+          if (-not (Test-Path dist/WeldWatch/tesseract/tessdata/eng.traineddata)) { throw "eng.traineddata fehlt" }
       - name: exe-Start prüfen
         run: dist/WeldWatch/WeldWatch.exe --help
       - uses: actions/upload-artifact@v4
