@@ -267,9 +267,12 @@ def find_pt_labels(words, taken_boxes, pair=False):
         res.append(dict(word=w, art=art, angabe=f"{pre}{m.group(2)}", pt=w.text, form=m.group(3)))
     return _pair_pt(res) if pair else res
 
+def _pt_key(t):
+    return re.sub(r"\s*\(T\)$", "", t.strip())
+
 def _pair_pt(res):
     """Übereinander stehende Bezeichnungen (oben = Pfeilseite, unten = Gegenseite) gehören zu einer
-    Bezugslinie -> eine beidseitige Naht."""
+    Bezugslinie -> eine beidseitige Naht, aber nur bei komplett gleicher Bezeichnung."""
     res = sorted(res, key=lambda r: (r["word"].cy, r["word"].x0))
     used, out = set(), []
     for i, a in enumerate(res):
@@ -281,6 +284,8 @@ def _pair_pt(res):
             if j in used:
                 continue
             wb = res[j]["word"]
+            if _pt_key(res[j]["pt"]) != _pt_key(a["pt"]):   # nur komplett gleiche Bezeichnung -> sonst getrennte Zeilen (eigene WPS)
+                continue
             if wb.cy - wa.cy > 2.2 * max(ha, 6):
                 break
             gap = wb.y0 - wa.y1
