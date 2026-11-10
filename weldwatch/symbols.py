@@ -223,7 +223,7 @@ def find_symbols(segs, words, cfg, word_provider=None):
     # Texte zuordnen
     for f in out:
         _assign_text(f, f.words, cfg)
-    if cfg.get("pattern_mode"):
+    if cfg.get("pattern_mode") and not cfg.get("no_text_filter"):
         # Raster: ganz ohne lesbares Maß und ohne Werkstoffgruppe ist es fast immer Beschriftung (z. B. "Schnitt A-A"), keine Naht
         out = [f for f in out if f.groups or any(d.get("size") for d in f.sides.values())]
     return out

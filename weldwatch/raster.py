@@ -28,6 +28,37 @@ def render(pdf_path, dpi, page_index=0):
     img = pg.render(scale=dpi / 72.0).to_pil().convert("RGB")
     return np.array(img)
 
+def render_gray(pdf_path, dpi, page_index=0):
+    pg = pdfium.PdfDocument(pdf_path)[page_index]
+    return np.array(pg.render(scale=dpi / 72.0, grayscale=True).to_pil().convert("L"))
+
+def ocr_gray_words(tess, gray, dpi, tile=2400, ov=240):
+    """Volltext-OCR in Kacheln für Scans ohne Farbanmerkungen (A0 bei 300 dpi). Liefert Wörter in pt."""
+    H, W = gray.shape
+    k = 72.0 / dpi
+    out = []
+    y = 0
+    while y < H:
+        x = 0
+        while x < W:
+            crop = gray[y:y + tile, x:x + tile]
+            if crop.min() < 128:
+                d = tess.image_to_data(crop, config="--psm 11", output_type=tess.Output.DICT)
+                for i, t in enumerate(d["text"]):
+                    t = t.strip()
+                    if len(t) < 2 or float(d["conf"][i]) < 30:
+                        continue
+                    wx0 = (x + d["left"][i]) * k; wy0 = (y + d["top"][i]) * k
+                    out.append(Word(t, wx0, wy0, wx0 + d["width"][i] * k, wy0 + d["height"][i] * k))
+            x += tile - ov
+        y += tile - ov
+    # Doppelte aus den Kachelrändern entfernen
+    uniq = []
+    for w in out:
+        if not any(u.text == w.text and abs(u.cx - w.cx) < 3 and abs(u.cy - w.cy) < 3 for u in uniq):
+            uniq.append(w)
+    return uniq
+
 def annotation_mask(rgb, cfg):
     """Pixel in der Farbe der Anmerkungsebene (Türkis) -> uint8-Maske 0/255"""
     r, g, b = [rgb[:, :, i].astype(int) for i in range(3)]

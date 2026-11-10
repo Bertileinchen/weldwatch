@@ -22,8 +22,19 @@ def process_raster(pdf_path, name, cfg):
     if not g:
         notes.append("Planquadrat-Raster nicht erkannt, Planquadrat = '-'.")
     dn, title, ex = name, "", None
+    words = []
+    rcfg = dict(cfg, tol=cfg["raster_tol"], symbol_min_len=cfg["raster_symbol_min_len"], pattern_mode=True,
+                ring_fn=lambda ex, ey: raster.ring_near(mask, dpi, ex, ey))
+    # Vorprüfung ohne Text: gibt es überhaupt Schweißsymbole in der Anmerkungsfarbe?
+    probe = symbols.find_symbols(segs, [], dict(rcfg, no_text_filter=True), word_provider=lambda f: [])
+    text_mode = len(probe) < 3     # keine Farbanmerkungen -> Scan mit den internen Bezeichnungen als Text (z. B. YH15-1 / L5-1)
     if tess:
-        pw = raster.ocr_page_words(tess, rgb, dpi)
+        if text_mode:
+            notes.append("Scan ohne Farbanmerkungen: es werden nur interne Bezeichnungen (z. B. YH15-1, L5-1) per Texterkennung gelesen.")
+            pw = raster.ocr_gray_words(tess, raster.render_gray(pdf_path, 300), 300)
+            words = pw
+        else:
+            pw = raster.ocr_page_words(tess, rgb, dpi)
         ex = exclude.find_exclusion(pw, cfg)
         if ex is None:
             notes.append("Block 'allgemeine Angaben' nicht gefunden (nichts ignoriert).")
@@ -33,9 +44,8 @@ def process_raster(pdf_path, name, cfg):
         notes.append("Tesseract (OCR) nicht gefunden: Maße und Werkstoffgruppen werden NICHT gelesen, "
                      "Block 'allgemeine Angaben' wird nicht ignoriert. Siehe README.")
         provider = lambda f: []
-    rcfg = dict(cfg, tol=cfg["raster_tol"], symbol_min_len=cfg["raster_symbol_min_len"], pattern_mode=True, ring_fn=lambda ex, ey: raster.ring_near(mask, dpi, ex, ey))
-    found = symbols.find_symbols(segs, [], rcfg, word_provider=provider)
-    return g, dn, title, ex, found, notes
+    found = [] if text_mode else symbols.find_symbols(segs, [], rcfg, word_provider=provider)
+    return g, dn, title, ex, found, notes, words
 
 def process(pdf_path, args, cfg):
     name = os.path.splitext(os.path.basename(pdf_path))[0]
@@ -48,9 +58,8 @@ def process(pdf_path, args, cfg):
         if kind == "leer":
             return dict(name=name, status="Seite leer / nicht lesbar", n=0)
         if kind == "raster":
-            g, dn, title, ex, found, rnotes = process_raster(pdf_path, name, cfg)
+            g, dn, title, ex, found, rnotes, words = process_raster(pdf_path, name, cfg)
             notes += rnotes
-            words = []
         else:
             segs, words = vector.read_page(page, cfg)
             g = grid.build_grid(words, page.width, page.height)
@@ -71,15 +80,13 @@ def process(pdf_path, args, cfg):
                                        for p in pt):
                 found.remove(f)
         entries = auswertung.build_entries(found, pt, g, ex, cfg)
-    out_xlsx = os.path.join(args.out, f"{name}_Pruefplan.xlsx")
-    output.write_excel(args.vorlage, out_xlsx, entries, dn, title, os.path.basename(pdf_path), notes,
-                       nr_in_remark=not args.ohne_nr)
     if args.kontroll:
         items = [dict(nr=e.nr, box=e.box, ok=e.ok) for e in entries]
         img = kontroll.render_overlay(pdf_path, items, ex, scale=args.kontroll_skala)
         kontroll.save_pdf(img, os.path.join(args.out, f"{name}_Kontrolle.pdf"))
     return dict(name=name, status="ok", n=len(entries), pruefen=sum(1 for e in entries if not e.ok),
-                ignoriert=ex is not None, notes=notes)
+                ignoriert=ex is not None, notes=notes, entries=entries, dn=dn, title=title,
+                source=os.path.basename(pdf_path))
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Schweißnähte aus Zeichnungen (Vektor-PDF) in den Prüfplan übernehmen")
@@ -95,6 +102,7 @@ def main(argv=None):
     os.makedirs(args.out, exist_ok=True)
     files = sorted(glob.glob(os.path.join(args.eingabe, "*.pdf"))) if os.path.isdir(args.eingabe) else [args.eingabe]
     lines = []
+    groups = []
     for f in files:
         try:
             r = process(f, args, cfg)
@@ -104,6 +112,16 @@ def main(argv=None):
         print(msg); lines.append(msg)
         for n in r.get("notes", []):
             print("   Hinweis:", n); lines.append("   Hinweis: " + n)
+        if r["status"] == "ok":
+            groups.append(dict(dn=r["dn"], title=r["title"], source=r["source"], entries=r["entries"], notes=r.get("notes", [])))
+    if groups:
+        # EINE Liste je Durchlauf; die Zeichnungsnummer steht in Spalte A jeder Zeile
+        base = os.path.basename(os.path.normpath(args.eingabe)) if os.path.isdir(args.eingabe) else \
+            os.path.splitext(os.path.basename(args.eingabe))[0]
+        out_xlsx = os.path.join(args.out, f"{base}_Pruefplan.xlsx")
+        output.write_excel(args.vorlage, out_xlsx, groups, nr_in_remark=not args.ohne_nr)
+        msg = f"-> Liste: {os.path.basename(out_xlsx)} ({sum(len(g['entries']) for g in groups)} Nähte aus {len(groups)} Zeichnung(en))"
+        print(msg); lines.append(msg)
     with open(os.path.join(args.out, "Zusammenfassung.txt"), "w", encoding="utf-8") as fh:
         fh.write("\n".join(lines) + "\n")
 

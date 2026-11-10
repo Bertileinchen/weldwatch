@@ -21,7 +21,7 @@ DEFAULTS = {
     "exclude_margin": [60.0, 12.0, 140.0, 60.0],   # links, oben, rechts, unten um die Anker (pt)
     "exclude_min_anchors": 6,
     # Zeichnungsnummer im Schriftfeld (regulärer Ausdruck); sonst Dateiname
-    "drawing_no_regex": r"^[A-Z]{1,3}\d{3}-\d{5}-\d$",
+    "drawing_no_regex": r"^(?:[A-Z]{1,3}\d{3}-\d{5}-\d|[A-Z]{1,3}\d{2}\.\d{3})$",
     # Werkstoffgruppen
     "alu_text": "Gr.22/23",
     "gr_alu": [22, 23],
