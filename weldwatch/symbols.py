@@ -249,12 +249,12 @@ def _assign_text(f, words, cfg):
         d["words"] = [w.text for w in ws]
 
 # ---------------------------------------------------------------- Altbezeichnungen als Text
-PT = re.compile(r"^(L|I|V|VH|VX|VK|Y|YH|YX|YK)(\d+(?:,\d)?)-(\d+)$")
+PT = re.compile(r"^(L|I|V|VH|VX|VK|Y|YH|YX|YK)(\d+(?:,\d)?)-(\d+)(?:\s*\(T\))?$")
 PT_MAP = {"L": ("Kehlnaht", "a"), "I": ("I-Naht", "I"), "V": ("V-Naht", "V"), "VH": ("HV-Naht", "HV"),
           "VX": ("DV-Naht", "DV"), "VK": ("DHV-Naht", "DHV"), "Y": ("Y-Naht", "Y"), "YH": ("HY-Naht", "HY"),
           "YX": ("DY-Naht", "DY"), "YK": ("DHY-Naht", "DHY")}
 
-def find_pt_labels(words, taken_boxes):
+def find_pt_labels(words, taken_boxes, pair=False):
     """Interne Bezeichnungen (z. B. YH5-125, L3-1), die als Text in der Zeichnung stehen."""
     res = []
     for w in words:
@@ -265,7 +265,36 @@ def find_pt_labels(words, taken_boxes):
             continue
         art, pre = PT_MAP[m.group(1)]
         res.append(dict(word=w, art=art, angabe=f"{pre}{m.group(2)}", pt=w.text, form=m.group(3)))
-    return res
+    return _pair_pt(res) if pair else res
+
+def _pair_pt(res):
+    """Übereinander stehende Bezeichnungen (oben = Pfeilseite, unten = Gegenseite) gehören zu einer
+    Bezugslinie -> eine beidseitige Naht."""
+    res = sorted(res, key=lambda r: (r["word"].cy, r["word"].x0))
+    used, out = set(), []
+    for i, a in enumerate(res):
+        if i in used:
+            continue
+        wa = a["word"]; ha = wa.y1 - wa.y0
+        best = None
+        for j in range(i + 1, len(res)):
+            if j in used:
+                continue
+            wb = res[j]["word"]
+            if wb.cy - wa.cy > 2.2 * max(ha, 6):
+                break
+            gap = wb.y0 - wa.y1
+            ov = min(wa.x1, wb.x1) - max(wa.x0, wb.x0)
+            if wb.cy > wa.cy + 0.6 * ha and -2 <= gap <= 0.9 * ha and (ov > 0 or abs(wa.x0 - wb.x0) < 8):
+                d = abs(wa.x0 - wb.x0) + gap
+                if best is None or d < best[0]:
+                    best = (d, j)
+        if best:
+            used.add(best[1]); b = res[best[1]]
+            out.append(dict(word=wa, art=a["art"], angabe=a["angabe"], pt=a["pt"], form=a["form"], second=b))
+        else:
+            out.append(a)
+    return out
 
 # ---------------------------------------------------------------- Musterbasierte Erkennung (für Rasterbilder)
 def _chain_diags(side_segs, max_perp=2.2, max_gap=3.5, max_ang=8.0):

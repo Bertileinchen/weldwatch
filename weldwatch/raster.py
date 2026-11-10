@@ -326,3 +326,74 @@ def ocr_column_numbers(tess, gray, dpi, band_h_pt=45):
         if t.isdigit() and 1 <= int(t) <= 30 and float(d["conf"][i]) > 40:
             res.append((int(t), d["left"][i] + d["width"][i] / 2))
     return res
+
+
+# ---------------------------------------------------------------- Bezugslinien-Beschriftungen (P&T-Text, Scan)
+_PT_RX = re.compile(r"^(L|I|V|VH|VX|VK|Y|YH|YX|YK)(\d+(?:,\d)?)-(\d+)(?:\s*\(T\))?$")
+
+def _pt_read(tess, img):
+    """Ein Textstreifen -> interne Bezeichnung (mehrere Varianten, die erste gültige gewinnt)."""
+    im = cv2.copyMakeBorder(img, 12, 12, 12, 12, cv2.BORDER_CONSTANT, value=255)
+    cfg = "--psm 7 -c tessedit_char_whitelist=LIVYHXKT()0123456789,-"
+    for sc in (1.0, 1.4, 1.8):
+        i2 = im if sc == 1.0 else cv2.resize(im, None, fx=sc, fy=sc, interpolation=cv2.INTER_CUBIC)
+        try:
+            t = tess.image_to_string(i2, config=cfg).strip().replace("–", "-").replace("—", "-")
+        except Exception:
+            return None
+        if _PT_RX.match(t):
+            return t
+    return None
+
+def find_pt_by_reflines(tess, gray, dpi):
+    """Sucht waagrechte Bezugslinien (ca. 10-80 pt) und liest den Text direkt darüber und darunter.
+    Liefert Word-Objekte (pt) mit dem tatsächlichen Text-Rahmen. Findet auch Beschriftungen, die die
+    Seiten-OCR übersieht (Text dicht an der Linie)."""
+    S = dpi / 72.0
+    b = (gray < 140).astype(np.uint8)
+    h = cv2.morphologyEx(b, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_RECT, (int(10 * S), 1)))
+    n, _, st, _ = cv2.connectedComponentsWithStats(h, connectivity=8)
+    H = int(13 * S)
+    res = []
+    for i in range(1, n):
+        x, y, w, hh, _a = st[i]
+        if hh > 6 or not (10 * S <= w <= 80 * S):
+            continue
+        for up in (True, False):
+            x0 = max(0, x - int(3 * S)); x1 = x + w + int(8 * S)
+            if up:
+                y0 = max(0, y - H); y1 = y - 1
+            else:
+                y0 = y + hh + 1; y1 = y0 + H
+            bb = b[y0:y1, x0:x1]
+            if bb.size == 0:
+                continue
+            cols = np.where(bb.sum(0) > 0)[0]; rows = np.where(bb.sum(1) > 0)[0]
+            if len(cols) < 10 or len(rows) < int(4 * S):
+                continue
+            ch = rows[-1] - rows[0] + 1; cw = cols[-1] - cols[0] + 1
+            if not (6 * S <= ch <= 13 * S + 4 and 3 * S < cw < 60 * S):
+                continue
+            # Vorfilter: Text besteht aus mehreren getrennten Zeichen
+            sub = bb[rows[0]:rows[-1] + 1, cols[0]:cols[-1] + 1]
+            nc, _, cst, _ = cv2.connectedComponentsWithStats(sub, connectivity=8)
+            if sum(1 for k in range(1, nc) if cst[k][3] >= 0.5 * ch) < 3:
+                continue
+            crop = gray[y0:y1, x0:x1][rows[0]:rows[-1] + 1, cols[0]:cols[-1] + 1]
+            txt = _pt_read(tess, crop)
+            if not txt:   # Pfeile/Linien rechts neben der Beschriftung abschneiden
+                sub2 = bb[rows[0]:rows[-1] + 1, :int(x + w - x0 + 2 * S)]
+                c2 = np.where(sub2.sum(0) > 0)[0]
+                if len(c2) > 10:
+                    txt = _pt_read(tess, gray[y0:y1, x0:x1][rows[0]:rows[-1] + 1, c2[0]:c2[-1] + 1])
+            if txt:
+                res.append(Word(txt, (x0 + cols[0]) / S, (y0 + rows[0]) / S,
+                                (x0 + cols[-1] + 1) / S, (y0 + rows[-1] + 1) / S))
+    return res
+
+def merge_pt_words(words, new):
+    """Neue Beschriftungen übernehmen, Seiten-OCR-Wörter an derselben Stelle ersetzen."""
+    def hit(a, b):
+        return not (a.x1 < b.x0 - 1 or a.x0 > b.x1 + 1 or a.y1 < b.y0 - 1 or a.y0 > b.y1 + 1)
+    keep = [w for w in words if not any(hit(w, n) for n in new)]
+    return keep + list(new)

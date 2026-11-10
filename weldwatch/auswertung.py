@@ -67,9 +67,19 @@ def build_entries(found, pt_labels, grid, ex, cfg):
         w = p["word"]
         if exclude.inside(ex, w.cx, w.cy):
             continue
-        out.append(Entry(grid.square(w.cx, w.cy) if grid else "-", w.cx, w.cy, p["art"], p["angabe"], "",
-                         format_groups(None, cfg), [f"interne Bezeichnung {p['pt']}"], True, "Altbezeichnung",
-                         (w.x0 - 4, w.y0 - 4, w.x1 + 4, w.y1 + 4)))
+        q = p.get("second")
+        if q:
+            w2 = q["word"]
+            art = DOUBLE.get(p["art"], "?") if p["art"] == q["art"] else f"{p['art']} + {q['art']}"
+            angabe = f"{p['angabe']}\n{q['angabe']}"
+            rem = ["beidseitig", f"interne Bezeichnung {p['pt']} / {q['pt']}"]
+            box = (min(w.x0, w2.x0) - 4, w.y0 - 4, max(w.x1, w2.x1) + 4, w2.y1 + 4)
+            cx, cy = (w.cx + w2.cx) / 2, (w.cy + w2.cy) / 2
+        else:
+            art, angabe, rem = p["art"], p["angabe"], [f"interne Bezeichnung {p['pt']}"]
+            box = (w.x0 - 4, w.y0 - 4, w.x1 + 4, w.y1 + 4); cx, cy = w.cx, w.cy
+        out.append(Entry(grid.square(cx, cy) if grid else "-", cx, cy, art, angabe, "",
+                         format_groups(None, cfg), rem, True, "Altbezeichnung", box))
     out.sort(key=lambda e: (e.square[0], int(e.square[1:]) if e.square[1:].isdigit() else 0, e.y, e.x))
     for i, e in enumerate(out, 1):
         e.nr = i

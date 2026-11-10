@@ -31,8 +31,9 @@ def process_raster(pdf_path, name, cfg):
     if tess:
         if text_mode:
             notes.append("Scan ohne Farbanmerkungen: es werden nur interne Bezeichnungen (z. B. YH15-1, L5-1) per Texterkennung gelesen.")
-            pw = raster.ocr_gray_words(tess, raster.render_gray(pdf_path, 300), 300)
-            words = pw
+            gray300 = raster.render_gray(pdf_path, 300)
+            pw = raster.ocr_gray_words(tess, gray300, 300)
+            words = raster.merge_pt_words(pw, raster.find_pt_by_reflines(tess, gray300, 300))
         else:
             pw = raster.ocr_page_words(tess, rgb, dpi)
         ex = exclude.find_exclusion(pw, cfg)
@@ -73,7 +74,7 @@ def process(pdf_path, args, cfg):
         def _erkannt(f):
             return any(d["kind"] != "unbekannt" for d in f.sides.values())
         taken = [(f.x0, f.y - 24, f.x1, f.y + 24) for f in found if _erkannt(f)]
-        pt = symbols.find_pt_labels(words, taken)
+        pt = symbols.find_pt_labels(words, taken, pair=(kind == "raster"))
         # nicht erkanntes Symbol, in dem eine interne Bezeichnung (z. B. L3-1) steht -> die Bezeichnung zählt
         for f in list(found):
             if not _erkannt(f) and any(f.x0 - 2 <= p["word"].cx <= f.x1 + 2 and f.y - 24 <= p["word"].cy <= f.y + 24
