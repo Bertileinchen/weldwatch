@@ -95,6 +95,11 @@ class App:
         self._lauf_text = ""
         self.f_fett = tkfont.nametofont("TkDefaultFont").copy()
         self.f_fett.configure(weight="bold")
+        # Zeilenhöhe der Liste an die Schrift koppeln (bei skalierten Bildschirmen sonst überlagerte Zeilen)
+        zeile = int(tkfont.nametofont("TkDefaultFont").metrics("linespace") * 1.45) + 2
+        stil = ttk.Style(root)
+        stil.configure("Treeview", rowheight=zeile)
+        stil.configure("Treeview.Heading", padding=(2, 3))
         self._menue()
         self._aufbauen()
         self._tasten()

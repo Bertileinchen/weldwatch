@@ -27,42 +27,52 @@ def _side_text(kind, d):
         core = f"?{size}"
     return core.strip()   # abgesetzte Nähte (3x30(50)) bewusst weggelassen - ändern die WPS nicht
 
+def _gleich(sides):
+    """Beide Seiten einer Bezugslinie komplett gleich (Nahtart und Maß)? Nur dann eine beidseitige Zeile."""
+    (_, x), (_, y) = sides
+    kx, ky = x["kind"].rstrip("?"), y["kind"].rstrip("?")
+    return kx == ky and _side_text(kx, x) == _side_text(ky, y)
+
 def build_entries(found, pt_labels, grid, ex, cfg):
     out = []
     for f in found:
         cx = (f.x0 + f.x1) / 2
         if exclude.inside(ex, cx, f.y):
             continue
-        up, down = f.sides.get("up"), f.sides.get("down")
-        sides = [(s, f.sides[s]) for s in ("up", "down") if s in f.sides]
-        kinds = [d["kind"] for _, d in sides]
-        ok = all(k != "unbekannt" and not k.endswith("?") for k in kinds)
-        rem = []
-        if len(sides) == 2:
-            rem.append("beidseitig")
-            art = DOUBLE.get(kinds[0].rstrip("?"), "?") if kinds[0] == kinds[1] else " + ".join(kinds)
-            angabe = "\n".join(_side_text(d["kind"].rstrip("?"), d) for _, d in sides)
-        else:
-            art = kinds[0].rstrip("?") if ok or kinds[0].endswith("?") else "Symbol unbekannt"
-            angabe = _side_text(kinds[0].rstrip("?"), sides[0][1])
-        if "?" in angabe:
-            ok = False
-            rem.append("Maß nicht gelesen - prüfen")
-        if any(k == "unbekannt" for k in kinds):
-            rem.append("Symbol nicht erkannt - prüfen")
-        elif any(k.endswith("?") for k in kinds):
-            rem.append("Symbol unsicher (evtl. Maßhilfslinie) - prüfen")
-        for n in f.notes:
-            rem.append(n)
-        # Dicke: bei Stumpfnähten s<Maß>
-        dicke = ""
-        for _, d in sides:
-            if d["kind"] in PREFIX and d.get("size", "").replace(",", "").replace(".", "").isdigit():
-                dicke = f"s{d['size']}"
-                break
-        out.append(Entry(grid.square(cx, f.y) if grid else "-", cx, f.y, art, angabe, dicke,
-                         format_groups(f.groups, cfg), rem, ok, "ISO",
-                         (f.x0, f.y - 22, f.x1, f.y + 22)))
+        alle = [(s, f.sides[s]) for s in ("up", "down") if s in f.sides]
+        # Beidseitig nur bei komplett gleichen Angaben; unterschiedliche Seiten sind getrennte Nähte (eigene WPS je Naht)
+        getrennt = len(alle) == 2 and not _gleich(alle)
+        for sides in ([[alle[0]], [alle[1]]] if getrennt else [alle]):
+            kinds = [d["kind"] for _, d in sides]
+            ok = all(k != "unbekannt" and not k.endswith("?") for k in kinds)
+            rem = []
+            if len(sides) == 2:
+                rem.append("beidseitig")
+                art = DOUBLE.get(kinds[0].rstrip("?"), "?") if kinds[0] == kinds[1] else " + ".join(kinds)
+                angabe = "\n".join(_side_text(d["kind"].rstrip("?"), d) for _, d in sides)
+            else:
+                art = kinds[0].rstrip("?") if ok or kinds[0].endswith("?") else "Symbol unbekannt"
+                angabe = _side_text(kinds[0].rstrip("?"), sides[0][1])
+                if getrennt:
+                    rem.append("Symbol oberhalb der Bezugslinie" if sides[0][0] == "up" else "Symbol unterhalb der Bezugslinie")
+            if "?" in angabe:
+                ok = False
+                rem.append("Maß nicht gelesen - prüfen")
+            if any(k == "unbekannt" for k in kinds):
+                rem.append("Symbol nicht erkannt - prüfen")
+            elif any(k.endswith("?") for k in kinds):
+                rem.append("Symbol unsicher (evtl. Maßhilfslinie) - prüfen")
+            for n in f.notes:
+                rem.append(n)
+            # Dicke: bei Stumpfnähten s<Maß>
+            dicke = ""
+            for _, d in sides:
+                if d["kind"] in PREFIX and d.get("size", "").replace(",", "").replace(".", "").isdigit():
+                    dicke = f"s{d['size']}"
+                    break
+            out.append(Entry(grid.square(cx, f.y) if grid else "-", cx, f.y, art, angabe, dicke,
+                             format_groups(f.groups, cfg), rem, ok, "ISO",
+                             (f.x0, f.y - 22, f.x1, f.y + 22)))
     for p in pt_labels:
         w = p["word"]
         if exclude.inside(ex, w.cx, w.cy):
