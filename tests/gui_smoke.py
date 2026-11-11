@@ -200,6 +200,8 @@ def main():
                "Neulauf ändert weder Prüfstatus noch Nähte (geprüfte/manuelle bleiben)")
         # Güte-/Prüfklasse: Standard, Auswahl bestimmt Prüfklasse und Prüfumfang
         v2 = os.path.join(d, "v2.xlsx"); PruefklassenTests().vorlage(v2)
+        for n in z.naehte:
+            n.extra.clear()
         p.vorlage = v2; app._extras_aufbauen()
         app.waehle(next(n for n in z.aktive() if "I" not in n.extra).id)
         cp, ct = app._spalte("cp"), app._spalte("ct")
