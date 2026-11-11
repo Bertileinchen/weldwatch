@@ -234,7 +234,7 @@ class App:
         form = ttk.LabelFrame(rechts, text="Naht", padding=6)
         form.grid(row=r, column=0, sticky="ew", pady=(6, 0))
         form.columnconfigure(1, weight=1)
-        self.v = {k: tk.StringVar() for k in ("square", "art", "dicke", "gruppe", "bem")}
+        self.v = {k: tk.StringVar() for k in ("square", "art", "stoss", "dicke", "gruppe", "wps", "bem")}
         self.f_widgets = []
         zeile = 0
 
@@ -248,13 +248,15 @@ class App:
 
         self.e_square = feld("Planquadrat", ttk.Entry(form, textvariable=self.v["square"], width=8))
         self.c_art = feld("Nahtart", ttk.Combobox(form, textvariable=self.v["art"], values=ARTEN))
+        self.c_stoss = feld("Zusatz Nahtart", ttk.Combobox(form, textvariable=self.v["stoss"], values=["", "T-Stoß"]))
         self.e_dicke = feld("Dicke (Sp. D)", ttk.Entry(form, textvariable=self.v["dicke"], width=8))
         self.t_angabe = feld("Zeichnungs-\nangabe", tk.Text(form, height=3, width=26, wrap="word", undo=True))
         self.c_gruppe = feld("Werkstoffgruppe", ttk.Combobox(form, textvariable=self.v["gruppe"], values=GRUPPEN))
+        self.e_wps = feld("WPS-Zusatzinfo\n(Winkel)", ttk.Entry(form, textvariable=self.v["wps"], width=12))
         self.e_bem = feld("Bemerkung\n(mit ; trennen)", ttk.Entry(form, textvariable=self.v["bem"]))
         self.lbl_quelle = ttk.Label(form, text="", foreground="#555555", wraplength=330, justify="left")
         self.lbl_quelle.grid(row=zeile, column=0, columnspan=2, sticky="w", pady=(4, 0))
-        for w in (self.e_square, self.c_art, self.e_dicke, self.c_gruppe, self.e_bem):
+        for w in (self.e_square, self.c_art, self.c_stoss, self.e_dicke, self.c_gruppe, self.e_wps, self.e_bem):
             w.bind("<Return>", lambda e: (self.naht_bestaetigen(), "break")[1])
         self.t_angabe.bind("<Control-Return>", lambda e: (self.naht_bestaetigen(), "break")[1])
 
@@ -490,9 +492,11 @@ class App:
             return
         self.v["square"].set(n.square)
         self.v["art"].set(n.art)
+        self.v["stoss"].set(n.stoss)
         self.v["dicke"].set(n.dicke)
         self.t_angabe.insert("1.0", n.angabe)
         self.v["gruppe"].set(n.gruppe)
+        self.v["wps"].set(n.wps)
         self.v["bem"].set("; ".join(n.bemerkung))
         hinweis = "" if n.ok or n.status != P.OFFEN else "  -  Erkennung unsicher, bitte genau prüfen"
         self.lbl_quelle.config(text=f"Nr. {n.nr or '-'}  |  Quelle: {n.quelle}  |  Status: {n.status}{hinweis}")
@@ -512,9 +516,9 @@ class App:
         w.configure(state="disabled")
 
     def _form_werte(self):
-        return dict(square=self.v["square"].get().strip(), art=self.v["art"].get().strip(), dicke=self.v["dicke"].get().strip(),
-                    angabe=self.t_angabe.get("1.0", "end-1c").strip(), gruppe=self.v["gruppe"].get().strip(),
-                    bem=self.v["bem"].get().strip())
+        return dict(square=self.v["square"].get().strip(), art=self.v["art"].get().strip(), stoss=self.v["stoss"].get().strip(),
+                    dicke=self.v["dicke"].get().strip(), angabe=self.t_angabe.get("1.0", "end-1c").strip(),
+                    gruppe=self.v["gruppe"].get().strip(), wps=self.v["wps"].get().strip(), bem=self.v["bem"].get().strip())
 
     def _form_anwenden(self, bestaetigen):
         """Formularwerte in die Naht übernehmen. bestaetigen=True prüft zusätzlich auf Vollständigkeit.
@@ -535,8 +539,8 @@ class App:
                         f"'{w['gruppe']}' passt nicht zum Schema (Gr.1-11, Gr.21-26 nur als Gr.22/23, Mischverbindung 'Gr.1 + Gr.8').\n\n"
                         "Trotzdem übernehmen?", parent=self.root):
                     return False
-        P.aendern(self.z, n, square=w["square"] or n.square, art=w["art"], dicke=w["dicke"], angabe=w["angabe"],
-                  gruppe=w["gruppe"], bemerkung=w["bem"])
+        P.aendern(self.z, n, square=w["square"] or n.square, art=w["art"], stoss=w["stoss"], dicke=w["dicke"],
+                  angabe=w["angabe"], gruppe=w["gruppe"], wps=w["wps"], bemerkung=w["bem"])
         self._snap = self._form_werte()
         self._nach_aenderung()
         return True

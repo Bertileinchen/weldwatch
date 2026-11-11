@@ -39,12 +39,13 @@ Pfad zur `python.exe` einmalig in die Datei `python_pfad.txt` schreiben (eine Ze
 |---|---|
 | A | Zeichnungsnummer aus dem Schriftfeld |
 | B | Planquadrat (aus dem Rahmen; Lage der Bezugslinie) |
-| C | Nahtart (Kehlnaht, V-, HV-, Y-, HY-, I-Naht; beidseitig: DV, DHV, DY, DHY, sonst Kombination) |
+| C | Nahtart (Kehlnaht, V-, HV-, Y-, HY-, I-Naht; beidseitig: DV, DHV, DY, DHY, sonst Kombination); bei T-Stößen der Altbezeichnung darunter (Zeilenumbruch) `T-Stoß`, nie bei Kehlnähten |
 | D | Nahtdicke `s<Maß>` bei Stumpfnähten |
 | E | Normbezeichnung wie gezeichnet (`a3`, `HY7 5x30(50)`, `V20`) |
+| WPS (Spalte über die Überschrift "WPS" der Vorlage gefunden) | Zusatzinfo für die manuelle WPS-Auswahl: Winkelangabe (`T90`, `T135`, bei Kehlnähten `45°`/`135°`), nur bei Altbezeichnungen aus der T-Stoß-Tabelle (`weldwatch/stoss.py`) |
 | H | Werkstoffgruppe: keine Klammer = `Gr.1`, `(22)`/`(23)` = `Gr.22/23`, `(1/8)` oder `(1+8)` = `Gr.1 + Gr.8` |
 | O | `Nr. n` (gleiche Nummer im Kontroll-PDF), „beidseitig“, Hinweise zum Prüfen |
-Alle anderen Spalten (WPS, WPQR, Arbeitsprobe, Klassen, Prüfumfang) bleiben leer. Blatt „Protokoll“ listet alle Funde.
+Alle anderen Spalten (WPQR, Arbeitsprobe, Klassen, Prüfumfang) bleiben leer. Blatt „Protokoll“ listet alle Funde.
 
 ## Ignorierter Bereich
 Der Block „allgemeine Angaben“ (Anbindungen I–XI, Kanten ISO 13715, I-Nähte …) wird über seinen Text gefunden und
@@ -63,7 +64,7 @@ Linien werden erkannt, Maße und Werkstoffgruppen per **OCR (Tesseract)** gelese
 
 ## Grenzen dieser Version
 - Vektor-PDFs sind die zuverlässige Hauptfunktion (siehe oben für Raster).
-- **Stoßart (T-Stoß …) wird nicht ermittelt**, Spalte bleibt leer.
+- **T-Stoß nur bei Altbezeichnungen** (feste Tabelle nach interner Schweißnorm, `weldwatch/stoss.py`); bei ISO-Symbolen wird die Stoßart nicht ermittelt.
 - Symbole mit gerundeten Flanken (U/J) und weitere Sonderformen werden als „Symbol unbekannt – prüfen“ geführt.
 - Ein Kreis an der Bezugslinie wird als Hinweis „Kreis (rundum?)“ vermerkt, nicht ausgewertet.
 - Pfeilseite/Gegenseite wird nicht bewertet; beidseitige Symbole stehen in **einer** Zeile mit Vermerk „beidseitig“.

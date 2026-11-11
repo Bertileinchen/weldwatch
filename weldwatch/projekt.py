@@ -42,6 +42,8 @@ class Naht:
     status: str = OFFEN
     nr: int = 0
     id: str = field(default_factory=_neue_id)
+    stoss: str = ""                      # Zusatz unter der Nahtart (T-Stoß)
+    wps: str = ""                        # Zusatzinfo (Winkel) für die WPS-Auswahl
 
     @property
     def aktiv(self):
@@ -59,7 +61,8 @@ class Naht:
     def to_dict(self):
         d = dict(id=self.id, nr=self.nr, square=self.square, x=round(self.x, 2), y=round(self.y, 2), art=self.art,
                  angabe=self.angabe, dicke=self.dicke, gruppe=self.gruppe, bemerkung=list(self.bemerkung),
-                 ok=self.ok, quelle=self.quelle, box=[round(v, 2) for v in self.box], status=self.status)
+                 ok=self.ok, quelle=self.quelle, box=[round(v, 2) for v in self.box], status=self.status,
+                 stoss=self.stoss, wps=self.wps)
         return d
 
     @classmethod
@@ -68,7 +71,7 @@ class Naht:
                 angabe=d.get("angabe", ""), dicke=d.get("dicke", ""), gruppe=d.get("gruppe", "Gr.1"),
                 bemerkung=list(d.get("bemerkung", [])), ok=bool(d.get("ok", True)), quelle=d.get("quelle", "ISO"),
                 box=tuple(d.get("box", (0, 0, 0, 0))), status=d.get("status", OFFEN), nr=int(d.get("nr", 0)),
-                id=d.get("id") or _neue_id())
+                id=d.get("id") or _neue_id(), stoss=d.get("stoss", ""), wps=d.get("wps", ""))
         if n.status not in STATUS_ALLE:
             n.status = OFFEN
         return n
@@ -77,7 +80,8 @@ class Naht:
     def aus_entry(cls, e):
         """auswertung.Entry -> Naht (Status offen)"""
         return cls(square=e.square, x=e.x, y=e.y, art=e.art, angabe=e.angabe, dicke=e.dicke, gruppe=e.gruppe,
-                   bemerkung=list(e.bemerkung), ok=e.ok, quelle=e.quelle, box=tuple(e.box), nr=e.nr)
+                   bemerkung=list(e.bemerkung), ok=e.ok, quelle=e.quelle, box=tuple(e.box), nr=e.nr,
+                   stoss=e.stoss, wps=e.wps)
 
     def zu_entry(self):
         """für output.write_excel"""
@@ -86,7 +90,7 @@ class Naht:
         if self.status == MANUELL and "manuell ergänzt" not in bem:
             bem.append("manuell ergänzt")
         return Entry(self.square, self.x, self.y, self.art, self.angabe, self.dicke, self.gruppe, bem, True,
-                     self.quelle, tuple(self.box), self.nr)
+                     self.quelle, tuple(self.box), self.nr, self.stoss, self.wps)
 
 
 def grid_to_dict(g):

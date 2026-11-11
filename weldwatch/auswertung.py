@@ -1,6 +1,6 @@
 """Aus den Funden Tabellenzeilen machen."""
 from dataclasses import dataclass, field
-from . import exclude, symbols
+from . import exclude, stoss, symbols
 from .werkstoff import format_groups
 
 PREFIX = {"V-Naht": "V", "HV-Naht": "HV", "Y-Naht": "Y", "HY-Naht": "HY", "I-Naht": "I"}
@@ -16,6 +16,8 @@ class Entry:
     quelle: str = "ISO"
     box: tuple = (0, 0, 0, 0)
     nr: int = 0
+    stoss: str = ""      # Zusatz unter der Nahtart (T-Stoß), nie bei Kehlnähten
+    wps: str = ""        # Zusatzinfo (Winkelangabe) für die manuelle WPS-Auswahl
 
 def _side_text(kind, d):
     size = d.get("size", "")
@@ -88,8 +90,11 @@ def build_entries(found, pt_labels, grid, ex, cfg):
         else:
             art, angabe, rem = p["art"], p["angabe"], [f"interne Bezeichnung {p['pt']}"]
             box = (w.x0 - 4, w.y0 - 4, w.x1 + 4, w.y1 + 4); cx, cy = w.cx, w.cy
+        zusatz, wps = stoss.zusatz(p.get("prefix"), p.get("form"))
+        if art == "Kehlnaht":   # Kehlnähte sind meist T-Stöße und bekommen den Zusatz nie
+            zusatz = ""
         out.append(Entry(grid.square(cx, cy) if grid else "-", cx, cy, art, angabe, "",
-                         format_groups(None, cfg), rem, True, "Altbezeichnung", box))
+                         format_groups(None, cfg), rem, True, "Altbezeichnung", box, stoss=zusatz, wps=wps))
     out.sort(key=lambda e: (e.square[0], int(e.square[1:]) if e.square[1:].isdigit() else 0, e.y, e.x))
     for i, e in enumerate(out, 1):
         e.nr = i

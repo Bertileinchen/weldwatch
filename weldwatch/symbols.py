@@ -264,7 +264,7 @@ def find_pt_labels(words, taken_boxes, pair=False):
         if any(b[0] - 2 <= w.cx <= b[2] + 2 and b[1] <= w.cy <= b[3] for b in taken_boxes):
             continue
         art, pre = PT_MAP[m.group(1)]
-        res.append(dict(word=w, art=art, angabe=f"{pre}{m.group(2)}", pt=w.text, form=m.group(3)))
+        res.append(dict(word=w, art=art, angabe=f"{pre}{m.group(2)}", pt=w.text, form=m.group(3), prefix=m.group(1)))
     return _pair_pt(res) if pair else res
 
 def _pt_key(t):
@@ -296,7 +296,7 @@ def _pair_pt(res):
                     best = (d, j)
         if best:
             used.add(best[1]); b = res[best[1]]
-            out.append(dict(word=wa, art=a["art"], angabe=a["angabe"], pt=a["pt"], form=a["form"], second=b))
+            out.append(dict(word=wa, art=a["art"], angabe=a["angabe"], pt=a["pt"], form=a["form"], prefix=a["prefix"], second=b))
         else:
             out.append(a)
     return out
