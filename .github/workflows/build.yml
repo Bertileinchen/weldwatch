@@ -51,8 +51,9 @@ jobs:
       - name: exe-Start prüfen
         shell: pwsh
         run: |
-          dist/WeldWatch/WeldWatch.exe --help
-          if ($LASTEXITCODE -ne 0) { throw "exe --help fehlgeschlagen" }
+          # Fenster-exe ohne Konsole: direkt aufgerufen wartet PowerShell nicht, deshalb Start-Process -Wait
+          $p = Start-Process -FilePath dist/WeldWatch/WeldWatch.exe -ArgumentList "--help" -PassThru -Wait
+          if ($p.ExitCode -ne 0) { throw "exe --help fehlgeschlagen (Code $($p.ExitCode))" }
       - name: Prüf-Fenster der gebauten exe starten (Selbsttest)
         shell: pwsh
         timeout-minutes: 3
