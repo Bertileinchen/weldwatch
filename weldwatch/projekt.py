@@ -274,13 +274,13 @@ def _sortschluessel(n):
 
 
 def neu_nummerieren(z):
-    """Laufende Nummern je Zeichnung wie im Erkennungslauf (Planquadrat, dann y, x). Gelöschte bekommen 0."""
-    akt = sorted(z.aktive(), key=_sortschluessel)
-    for i, n in enumerate(akt, 1):
-        n.nr = i
-    for n in z.naehte:
-        if not n.aktiv:
-            n.nr = 0
+    """Nummern bleiben stabil: schon vergebene ändern sich nie (auch nicht beim Löschen, Ändern oder Ergänzen).
+    Nähte ohne Nummer bekommen die nächste freie - von Hand gesetzte also immer die höchste, die Erkennung nach Position.
+    Gelöschte behalten ihre Nummer (beim Wiederherstellen), stehen aber hinten in der Liste."""
+    nr = max((n.nr for n in z.naehte if n.nr > 0), default=0)
+    for n in sorted((n for n in z.naehte if n.nr <= 0), key=_sortschluessel):
+        nr += 1
+        n.nr = nr
     z.naehte.sort(key=lambda n: (not n.aktiv, n.nr))
 
 
@@ -364,6 +364,7 @@ def zusammenfuehren(alt, neu):
             if best is not None and ((best.x - n.x) ** 2 + (best.y - n.y) ** 2) ** 0.5 <= MATCH_ABSTAND:
                 frei.remove(best)
                 best.id = n.id
+                best.nr = n.nr                      # Nummer bleibt
                 best.extra = dict(n.extra)          # von Hand ausgefüllte Spalten nicht verlieren
                 if n.wps and not best.wps:
                     best.wps = n.wps
@@ -371,6 +372,7 @@ def zusammenfuehren(alt, neu):
             else:
                 entfernt += 1
     for m in frei:
+        m.nr = 0                                    # neu gefundene bekommen die nächste freie Nummer
         ergebnis.append(m)
         hinzu += 1
     alt.naehte = ergebnis
@@ -421,10 +423,10 @@ def extras_setzen(n, werte):
             n.extra.pop(k, None)
 
 
-def extra_fuer_alle(z, buchstabe, wert):
-    """Wert einer Spalte bei allen (nicht gelöschten) Nähten einer Zeichnung eintragen. Gibt die Anzahl zurück."""
+def extra_fuer_alle(z, buchstabe, wert, naehte=None):
+    """Wert einer Spalte bei den angegebenen Nähten (Standard: allen nicht gelöschten der Zeichnung) eintragen. Gibt die Anzahl zurück."""
     k = 0
-    for n in z.aktive():
+    for n in (z.aktive() if naehte is None else [m for m in naehte if m.aktiv]):
         extras_setzen(n, {buchstabe: wert})
         k += 1
     return k

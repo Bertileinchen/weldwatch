@@ -11,7 +11,8 @@ from tkinter import ttk, filedialog, messagebox
 
 from PIL import ImageTk
 
-from . import lauf, output, pruefklassen
+from . import __version__, lauf, output, pruefklassen
+from .changelog import CHANGELOG
 from . import projekt as P
 from .pdfansicht import Ansicht, PdfSeite
 
@@ -31,25 +32,86 @@ FARBE_AUSWAHL = "#e53935"
 ZEILE_HINTERGRUND = {"offen": "#e3f0fc", "pruefen": "#ffe9cc", P.BESTAETIGT: "#e3f5e3", P.GEAENDERT: "#d9f2ef",
                      P.MANUELL: "#f1e0f5", P.GELOESCHT: "#f2f2f2"}
 
-HILFE = """Farben der Markierungen
+ALLE, LEER = "(alle)", "(leer)"
+FILTER = (("q", "Quadr."), ("art", "Nahtart"), ("angabe", "Angabe"), ("gr", "Gruppe"), ("status", "Status"))
+
+HILFE_SEITEN = [
+    ("Überblick", """Ablauf in Kürze
+  1. PDF, Ordner oder Projektdatei (.wwp) öffnen oder ins Fenster ziehen - die Erkennung läuft im Hintergrund.
+  2. Jede Naht prüfen: anklicken, Daten kontrollieren/ändern, bestätigen.
+  3. Weitere Excel-Spalten ausfüllen (WPS, WPQR, Güte-/Prüfklasse ...).
+  4. Excel-Prüfplan erstellen (erst möglich, wenn keine Naht mehr offen ist), optional mit Prüf-PDFs.
+
+Die Ergebnisse der Erkennung sind Vorschläge zur Prüfung durch eine Person.
+
+Farben der Markierungen
   blau      Vorschlag des Programms (noch ungeprüft)
   orange    Vorschlag, Erkennung unsicher - besonders genau prüfen
   grün      bestätigt
   türkis    von dir geändert
   violett   von dir selbst gesetzt
   grau      gelöscht (nur sichtbar mit "gelöschte zeigen")
-  rot       aktuell gewählte Naht
-
-Bedienung
+  rot       aktuell gewählte Naht"""),
+    ("Nähte prüfen", """Ansicht
   Mausrad = Zoom, linke Maustaste auf leerer Fläche ziehen (oder mittlere/rechte Taste) = Verschieben
-  Naht anklicken = Daten rechts bearbeiten
-  Strg+Enter (oder Enter in der Liste) = bestätigen und zur nächsten offenen Naht
-  Entf = löschen   N = nächste offene   F = ganze Seite   A = neue Naht setzen (klicken oder Rahmen aufziehen)
-  Strg+Bild auf / Bild ab = vorherige / nächste Zeichnung (oder Knöpfe / Reiter oben)
-  Strg+S = speichern (beim ersten Mal mit 'Speichern unter'; danach wird die Projektdatei einfach aktualisiert)
-  Reiter 'Weitere Excel-Spalten' = WPS, Arbeitsprobe, Prüfumfang usw. eintragen ('→ alle' = für die ganze Zeichnung)
+  F = ganze Seite, + / - = Zoom
 
-Die Excel-Liste wird erst erstellt, wenn keine Naht mehr offen ist. Ergebnisse sind Vorschläge zur Prüfung durch eine Person."""
+Bearbeiten
+  Naht anklicken (Zeichnung oder Liste) = Daten rechts im Reiter "Naht" bearbeiten
+  Strg+Enter (oder Enter in der Liste) = bestätigen und zur nächsten offenen Naht
+  Entf = löschen / wiederherstellen        N = nächste offene Naht
+  Änderungen werden beim Wechsel der Naht übernommen (Status "geändert").
+
+Fehlende Naht
+  Knopf "Neue Naht setzen" (oder Taste A), dann in die Zeichnung klicken oder einen Rahmen aufziehen. Esc bricht ab.
+  Von Hand gesetzte Nähte bekommen die nächste freie Nummer; bestehende Nummern ändern sich nie.
+
+Alle angezeigten bestätigen
+  Bestätigt alle in der Liste angezeigten, vollständigen Nähte auf einmal (mit Rückfrage). Mit Filter nur die gefilterten."""),
+    ("Zeichnungen und Filter", """Mehrere Zeichnungen
+  Umschalten: Auswahlliste oben, Reiter (bis 8 Zeichnungen), Knöpfe "◀ Zeichnung / Zeichnung ▶" oder Strg+Bild auf / Bild ab.
+  Die vorige Zeichnung muss nicht fertig sein.
+  Hinzufügen: "Zeichnung hinzufügen" (PDFs) oder "Ordner hinzufügen" - jederzeit, auch wenn nur eine PDF geöffnet wurde.
+  Entfernen: "Zeichnung entfernen" nimmt die aktuelle Zeichnung aus dem Projekt (die PDF-Datei bleibt erhalten).
+
+Nahtliste filtern
+  Über der Liste gibt es je Spalte eine Auswahl (wie beim Excel-Filter): Quadrat, Nahtart, Angabe, Gruppe, Status.
+  "nur offene" zeigt nur noch zu prüfende Nähte. "Filter löschen" setzt alle Filter zurück.
+  Die Knöpfe "→ alle" (Weitere Excel-Spalten) und "Alle angezeigten bestätigen" wirken NUR auf die angezeigten Nähte.
+  Beispiel: Nahtart "Kehlnaht" und Angabe "a5" einstellen, WPQR eintragen, "→ alle" - gilt nur für diese Nähte."""),
+    ("Excel-Spalten", """Reiter "Weitere Excel-Spalten"
+  Für jede nicht erkannte Spalte der Vorlage gibt es ein Feld (Überschrift aus der Vorlage). Die Werte kommen unverändert in die
+  Excel-Liste und ändern den Prüfstatus nicht. WPS steht im Reiter "Naht" (vorbelegt mit "Auswahlhilfe: ..." aus der Winkelangabe).
+
+Güteklasse / Prüfklasse
+  Beide sind Auswahllisten. Die Güteklasse setzt die zugehörige Prüfklasse (änderbar). Der Prüfumfang UT / MT / VT wird aus der
+  Prüfklasse ermittelt (CT 1: 100%/100%/100%, CT 2: 10%/10%/100%, CT 3 und CT 4: -/-/100%).
+  Standard für alle Nähte: CP C2 / CT 3.
+
+Excel-Vorlage
+  Datei > Excel-Vorlage wählen. Die Spalten werden über ihre Überschriften gefunden."""),
+    ("Speichern und Export", """Speichern
+  Beim ersten Speichern (Strg+S, Knopf oder Excel-Export) kommt "Speichern unter". Danach wird einfach überspeichert.
+  Gefragt wird, ob die Zeichnungs-PDFs mit ins Projekt kopiert werden (Unterordner "Zeichnungen"): Das Projekt bleibt vollständig,
+  auch wenn die Originale verschoben oder geändert werden. Davor sichert das Programm laufend in eine Sicherungsdatei.
+
+Excel-Prüfplan
+  Datei > Excel-Prüfplan erstellen. Der Vorschlag liegt im Projektordner. Danach fragt das Programm "Prüf-PDFs mit exportieren?":
+  je Zeichnung eine PDF mit nummerierten Markierungen im Unterordner "<Excelname>_Pruef-PDFs".
+
+Erneute Erkennung
+  Ansicht > Erkennung dieser Zeichnung wiederholen: geprüfte, geänderte, gelöschte und selbst gesetzte Nähte bleiben erhalten."""),
+    ("Tastenkürzel", """Strg+S              speichern
+Strg+Enter          bestätigen und weiter
+Enter (Liste)       bestätigen und weiter
+Entf                löschen / wiederherstellen
+N                   nächste offene Naht
+A                   neue Naht setzen
+Esc                 Setzen abbrechen
+F                   ganze Seite
++ / -               Zoom
+Strg+Bild auf / ab  vorherige / nächste Zeichnung"""),
+]
 
 
 def farbe_naht(n):
@@ -58,6 +120,13 @@ def farbe_naht(n):
     if n.unvollstaendig:
         return FARBE_PRUEFEN
     return FARBE_STATUS[n.status]
+
+
+def status_text(n):
+    status = n.status if not (n.status == P.OFFEN and not n.ok) else "prüfen!"
+    if n.unvollstaendig and n.aktiv:
+        status = "unvollständig"
+    return status
 
 
 def zeilen_tag(n):
@@ -69,7 +138,7 @@ def zeilen_tag(n):
 class App:
     def __init__(self, root, projekt=None):
         self.root = root
-        root.title("WeldWatch - Prüf-Fenster")
+        root.title(f"WeldWatch {__version__} - Prüf-Fenster")
         root.geometry("1500x900")
         root.minsize(1000, 600)
         self.p = None                 # Projekt
@@ -99,6 +168,8 @@ class App:
         self._job_hinweis = ""
         self._job_titel = "Fehler"
         self.var_zi = tk.IntVar(value=0)
+        self.filter_vars = {k: tk.StringVar(value=ALLE) for k, _t in FILTER}
+        self.filter_cbs = {}
         self.tab_btns = []
         self.extra_vars = {}
         self.x_widgets = []
@@ -127,7 +198,9 @@ class App:
         d = tk.Menu(m, tearoff=0)
         d.add_command(label="Öffnen (PDF oder Projekt) ...", command=self.dialog_oeffnen)
         d.add_command(label="Ordner mit Zeichnungen öffnen ...", command=self.dialog_ordner)
-        d.add_command(label="Zeichnungen zum Projekt hinzufügen ...", command=self.zeichnungen_hinzufuegen)
+        d.add_command(label="Zeichnungen (PDF) hinzufügen ...", command=self.zeichnungen_hinzufuegen)
+        d.add_command(label="Ordner mit Zeichnungen hinzufügen ...", command=self.ordner_hinzufuegen)
+        d.add_command(label="Aktuelle Zeichnung aus dem Projekt entfernen", command=self.zeichnung_entfernen)
         d.add_separator()
         d.add_command(label="Speichern", accelerator="Strg+S", command=self.speichern)
         d.add_command(label="Speichern unter ...", command=self.speichern_unter)
@@ -154,7 +227,8 @@ class App:
         a.add_command(label="Erkennung dieser Zeichnung wiederholen (Prüfung bleibt erhalten)", command=self.erkennung_wiederholen)
         m.add_cascade(label="Ansicht", menu=a)
         h = tk.Menu(m, tearoff=0)
-        h.add_command(label="Bedienung und Farben", command=lambda: messagebox.showinfo("Bedienung", HILFE, parent=self.root))
+        h.add_command(label="Bedienung und Farben", command=self.hilfe_zeigen)
+        h.add_command(label="Änderungsprotokoll (Changelog)", command=self.changelog_zeigen)
         m.add_cascade(label="Hilfe", menu=h)
         self.root.config(menu=m)
 
@@ -163,19 +237,29 @@ class App:
         tb.pack(side="top", fill="x")
         ttk.Button(tb, text="Öffnen ...", command=self.dialog_oeffnen).pack(side="left")
         ttk.Button(tb, text="Speichern", command=self.speichern).pack(side="left", padx=(4, 12))
-        self.btn_neu = ttk.Checkbutton(tb, text="Neue Naht setzen (A)", variable=self.var_neu, command=self._neu_modus_geaendert,
-                                       style="Toolbutton")
+        self.btn_neu = tk.Checkbutton(tb, text="Neue Naht setzen (A)", variable=self.var_neu, command=self._neu_modus_geaendert,
+                                      indicatoron=False, relief="raised", bd=2, padx=10, pady=2, selectcolor="#ffd089")
         self.btn_neu.pack(side="left")
         ttk.Button(tb, text="Nächste offene (N)", command=self.naechste_offene).pack(side="left", padx=4)
         ttk.Button(tb, text="Ganze Seite (F)", command=self.ganze_seite).pack(side="left")
         ttk.Button(tb, text="+", width=3, command=lambda: self.zoom_schritt(1.4)).pack(side="left", padx=(8, 0))
         ttk.Button(tb, text="-", width=3, command=lambda: self.zoom_schritt(1 / 1.4)).pack(side="left")
-        ttk.Button(tb, text="◀ Zeichnung", command=lambda: self.zeichnung_weiter(-1)).pack(side="left", padx=(12, 0))
-        ttk.Button(tb, text="Zeichnung ▶", command=lambda: self.zeichnung_weiter(1)).pack(side="left", padx=(2, 0))
         self.btn_excel = ttk.Button(tb, text="Excel-Prüfplan erstellen ...", command=self.excel_exportieren)
         self.btn_excel.pack(side="right")
         self.lbl_offen = ttk.Label(tb, text="", font=self.f_fett)
         self.lbl_offen.pack(side="right", padx=12)
+
+        zb = ttk.Frame(self.root, padding=(6, 0, 6, 2))
+        zb.pack(side="top", fill="x")
+        ttk.Label(zb, text="Zeichnung:").pack(side="left")
+        ttk.Button(zb, text="◀", width=3, command=lambda: self.zeichnung_weiter(-1)).pack(side="left", padx=(4, 0))
+        self.cb_zeichnung = ttk.Combobox(zb, textvariable=self.var_zeichnung, state="readonly", width=56)
+        self.cb_zeichnung.pack(side="left", padx=2)
+        self.cb_zeichnung.bind("<<ComboboxSelected>>", self._zeichnung_gewaehlt)
+        ttk.Button(zb, text="▶", width=3, command=lambda: self.zeichnung_weiter(1)).pack(side="left")
+        ttk.Button(zb, text="+ Zeichnung hinzufügen", command=self.zeichnungen_hinzufuegen).pack(side="left", padx=(14, 0))
+        ttk.Button(zb, text="+ Ordner", command=self.ordner_hinzufuegen).pack(side="left", padx=2)
+        ttk.Button(zb, text="- Zeichnung entfernen", command=self.zeichnung_entfernen).pack(side="left", padx=2)
 
         self.tabs = ttk.Frame(self.root, padding=(6, 0))
         self.tabs.pack(side="top", fill="x")
@@ -184,6 +268,7 @@ class App:
         sb.pack(side="bottom", fill="x")
         self.progress = ttk.Progressbar(sb, mode="indeterminate", length=160)
         ttk.Label(sb, textvariable=self.var_status).pack(side="left")
+        ttk.Label(sb, text=f"Version {__version__}", foreground="#555555").pack(side="right", padx=(10, 0))
         self.progress.pack(side="right")
 
         pw = ttk.PanedWindow(self.root, orient="horizontal")
@@ -210,12 +295,6 @@ class App:
 
         rechts.columnconfigure(0, weight=1)
         r = 0
-        ttk.Label(rechts, text="Zeichnung").grid(row=r, column=0, sticky="w")
-        r += 1
-        self.cb_zeichnung = ttk.Combobox(rechts, textvariable=self.var_zeichnung, state="readonly")
-        self.cb_zeichnung.grid(row=r, column=0, sticky="ew")
-        self.cb_zeichnung.bind("<<ComboboxSelected>>", self._zeichnung_gewaehlt)
-        r += 1
         zn = ttk.Frame(rechts)
         zn.grid(row=r, column=0, sticky="ew", pady=(4, 0))
         zn.columnconfigure(1, weight=1)
@@ -232,6 +311,20 @@ class App:
         fl.grid(row=r, column=0, sticky="ew")
         ttk.Checkbutton(fl, text="nur offene", variable=self.var_nur_offen, command=self._liste_fuellen).pack(side="left")
         ttk.Checkbutton(fl, text="gelöschte zeigen", variable=self.var_geloescht, command=self._geloescht_umschalten).pack(side="left", padx=8)
+        self.lbl_filter = ttk.Label(fl, text="", foreground="#555555")
+        self.lbl_filter.pack(side="right")
+        r += 1
+        ff = ttk.Frame(rechts)
+        ff.grid(row=r, column=0, sticky="ew", pady=(2, 2))
+        for c in (1, 3, 5):
+            ff.columnconfigure(c, weight=1)
+        for i, (k, t) in enumerate(FILTER):
+            ttk.Label(ff, text=t).grid(row=i // 3, column=(i % 3) * 2, sticky="e", padx=(4, 2), pady=1)
+            cb = ttk.Combobox(ff, textvariable=self.filter_vars[k], state="readonly", width=9, values=[ALLE])
+            cb.grid(row=i // 3, column=(i % 3) * 2 + 1, sticky="ew", pady=1)
+            cb.bind("<<ComboboxSelected>>", lambda e: self._filter_geaendert())
+            self.filter_cbs[k] = cb
+        ttk.Button(ff, text="Filter löschen", command=self._filter_loeschen).grid(row=1, column=4, columnspan=2, sticky="ew", padx=(6, 0))
         r += 1
         tf = ttk.Frame(rechts)
         tf.grid(row=r, column=0, sticky="nsew")
@@ -278,7 +371,7 @@ class App:
         self.c_art = feld("Nahtart", ttk.Combobox(form, textvariable=self.v["art"], values=ARTEN))
         self.c_stoss = feld("Zusatz Nahtart", ttk.Combobox(form, textvariable=self.v["stoss"], values=["", "T-Stoß"]))
         self.e_dicke = feld("Dicke (Sp. D)", ttk.Entry(form, textvariable=self.v["dicke"], width=8))
-        self.t_angabe = feld("Zeichnungs-\nangabe", tk.Text(form, height=3, width=26, wrap="word", undo=True))
+        self.t_angabe = feld("Zeichnungs-\nangabe", tk.Text(form, height=2, width=20, wrap="word", undo=True))
         self.c_gruppe = feld("Werkstoffgruppe", ttk.Combobox(form, textvariable=self.v["gruppe"], values=GRUPPEN))
         self.e_wps = feld("WPS\n(vorbelegt: Winkel)", ttk.Entry(form, textvariable=self.v["wps"], width=16))
         self.e_bem = feld("Bemerkung\n(mit ; trennen)", ttk.Entry(form, textvariable=self.v["bem"]))
@@ -295,6 +388,9 @@ class App:
         self.btn_ok.pack(side="left", fill="x", expand=True)
         self.btn_del = ttk.Button(bf, text="Löschen (Entf)", command=self.naht_loeschen)
         self.btn_del.pack(side="left", padx=(6, 0))
+        r += 1
+        self.btn_alle_ok = ttk.Button(rechts, text="Alle angezeigten Nähte bestätigen", command=self.alle_bestaetigen)
+        self.btn_alle_ok.grid(row=r, column=0, sticky="ew", pady=(4, 0))
         self._extras_aufbauen()
         self._form_fuellen(None)
 
@@ -426,22 +522,59 @@ class App:
             self._extras_aufbauen()
             self._sichern()
 
+    def _angezeigt_text(self, anz):
+        gesamt = len(self.z.aktive())
+        text = f"{anz} angezeigten Nähten"
+        if anz != gesamt:
+            text += f" (Filter aktiv, von {gesamt} Nähten dieser Zeichnung)"
+        return text
+
     def extra_fuer_alle(self, b):
+        """Wert eines Feldes bei allen in der Liste ANGEZEIGTEN (gefilterten) Nähten eintragen - nicht bei allen der Zeichnung."""
         if self.z is None or b not in self.extra_vars:
             return
         wert = self.extra_vars[b].get().strip()
-        anz = len(self.z.aktive())
-        text = (f"'{wert}' bei allen {anz} Nähten dieser Zeichnung eintragen?" if wert
-                else f"Diese Spalte bei allen {anz} Nähten dieser Zeichnung leeren?")
-        if not messagebox.askyesno("Für alle Nähte", text + "\nVorhandene Einträge in dieser Spalte werden überschrieben.", parent=self.root):
+        ziel = [n for n in self._gefiltert() if n.aktiv]
+        if not ziel:
+            messagebox.showinfo("Für alle angezeigten", "Es sind keine Nähte angezeigt.", parent=self.root)
+            return
+        text = f"'{wert}' bei {self._angezeigt_text(len(ziel))} eintragen?" if wert else f"Diese Spalte bei {self._angezeigt_text(len(ziel))} leeren?"
+        if not messagebox.askyesno("Für alle angezeigten Nähte", text + "\nVorhandene Einträge in dieser Spalte werden überschrieben.", parent=self.root):
             return
         self._form_anwenden(False)
-        P.extra_fuer_alle(self.z, b, wert)
+        P.extra_fuer_alle(self.z, b, wert, ziel)
         if self.x_rollen.get(b) == "cp" and self._spalte("ct") in self.extra_vars:    # Güteklasse bringt ihre Prüfklasse mit
-            P.extra_fuer_alle(self.z, self._spalte("ct"), self.extra_vars[self._spalte("ct")].get().strip())
+            P.extra_fuer_alle(self.z, self._spalte("ct"), self.extra_vars[self._spalte("ct")].get().strip(), ziel)
         self._form_fuellen(self._naht())
         self._sichern()
-        self._status(f"Spalte {b}: bei {anz} Nähten eingetragen.")
+        self._status(f"Spalte {b}: bei {len(ziel)} angezeigten Nähten eingetragen.")
+
+    def alle_bestaetigen(self):
+        """Alle angezeigten, vollständigen und noch offenen Nähte bestätigen (mit Rückfrage)."""
+        if self.z is None or self.busy:
+            return
+        self._form_anwenden(False)
+        ziel = [n for n in self._gefiltert() if n.aktiv and n.status == P.OFFEN and not n.unvollstaendig]
+        unvoll = [n for n in self._gefiltert() if n.aktiv and n.unvollstaendig]
+        if not ziel:
+            messagebox.showinfo("Alle bestätigen", "Keine offenen, vollständigen Nähte angezeigt." +
+                                (f"\n{len(unvoll)} unvollständige Nähte müssen von Hand ergänzt werden." if unvoll else ""), parent=self.root)
+            return
+        unsicher = sum(1 for n in ziel if not n.ok)
+        text = f"{len(ziel)} Nähte als geprüft bestätigen?"
+        if len(ziel) != len(self.z.aktive()):
+            text += f"\n(Filter aktiv: {self._angezeigt_text(len(ziel))})"
+        if unsicher:
+            text += f"\n\nAchtung: {unsicher} davon sind als unsicher erkannt (orange)."
+        if unvoll:
+            text += f"\n{len(unvoll)} unvollständige Nähte werden übersprungen."
+        if not messagebox.askyesno("Alle angezeigten bestätigen", text, parent=self.root):
+            return
+        for n in ziel:
+            P.bestaetigen(n)
+        self._form_fuellen(self._naht())
+        self._nach_aenderung()
+        self._status(f"{len(ziel)} Nähte bestätigt.")
 
     # ------------------------------------------------------------------------------------------------ Projekt
     def projekt_setzen(self, p):
@@ -478,9 +611,9 @@ class App:
 
     def _titel(self):
         if self.p:
-            self.root.title(f"WeldWatch - {self.p.basis}   [{self.p.pfad or 'nicht gespeichert'}]")
+            self.root.title(f"WeldWatch {__version__} - {self.p.basis}   [{self.p.pfad or 'nicht gespeichert'}]")
         else:
-            self.root.title("WeldWatch - Prüf-Fenster")
+            self.root.title(f"WeldWatch {__version__} - Prüf-Fenster")
 
     def _zeichnung_wechseln(self, z):
         if self.seite is not None:
@@ -507,6 +640,8 @@ class App:
                 self.seite = None
                 self._status(f"PDF kann nicht angezeigt werden: {ex}")
         self.var_dn.set(z.dn if z else "")
+        for v in self.filter_vars.values():
+            v.set(ALLE)
         self._combo_aktualisieren()
         self._info_aktualisieren()
         self._liste_fuellen()
@@ -598,30 +733,61 @@ class App:
         return self.z.naht(self.sel) if (self.z is not None and self.sel) else None
 
     def _sichtbare_naehte(self):
+        """Nähte der Zeichnung ohne Spaltenfilter (gelöschte nur mit 'gelöschte zeigen')."""
         if self.z is None:
             return []
-        out = []
-        for n in self.z.naehte:
-            if not n.aktiv and not self.var_geloescht.get():
-                continue
-            out.append(n)
-        return out
+        return [n for n in self.z.naehte if n.aktiv or self.var_geloescht.get()]
+
+    @staticmethod
+    def _filterwerte(n):
+        return dict(q=n.square, art=n.art, angabe=n.angabe.replace("\n", " / "), gr=n.gruppe, status=status_text(n))
+
+    def _filter_passt(self, n):
+        w = self._filterwerte(n)
+        for k, var in self.filter_vars.items():
+            v = var.get()
+            if v and v != ALLE and (w[k] or LEER) != v:
+                return False
+        return True
+
+    def _gefiltert(self):
+        """Die in der Liste angezeigten Nähte (Filter, 'nur offene', 'gelöschte zeigen'). Darauf wirken die 'alle'-Knöpfe."""
+        return [n for n in self._sichtbare_naehte() if (n.offen or not self.var_nur_offen.get()) and self._filter_passt(n)]
+
+    def _filter_werte_aktualisieren(self):
+        alle = self._sichtbare_naehte()
+        for k, cb in self.filter_cbs.items():
+            werte = sorted({(self._filterwerte(n)[k] or LEER) for n in alle})
+            akt = self.filter_vars[k].get()
+            if akt and akt != ALLE and akt not in werte:
+                werte.append(akt)
+            cb.configure(values=[ALLE] + werte)
+
+    def _filter_geaendert(self):
+        self._liste_fuellen()
+
+    def _filter_loeschen(self):
+        for v in self.filter_vars.values():
+            v.set(ALLE)
+        self.var_nur_offen.set(False)
+        self._liste_fuellen()
 
     def _liste_fuellen(self):
         self._tree_sperre = True
         try:
             self.tree.delete(*self.tree.get_children())
+            sicht = self._gefiltert()
+            ids = {n.id for n in sicht}
             for n in self._sichtbare_naehte():
-                if self.var_nur_offen.get() and not n.offen and n.id != self.sel:
+                if n.id not in ids and n.id != self.sel:      # die gewählte Naht bleibt immer sichtbar
                     continue
-                status = n.status if not (n.status == P.OFFEN and not n.ok) else "prüfen!"
-                if n.unvollstaendig and n.aktiv:
-                    status = "unvollständig"
                 self.tree.insert("", "end", iid=n.id, tags=(zeilen_tag(n),),
-                                 values=(n.nr or "-", n.square, n.art, n.angabe.replace("\n", " / "), n.gruppe, status))
+                                 values=(n.nr or "-", n.square, n.art, n.angabe.replace("\n", " / "), n.gruppe, status_text(n)))
             if self.sel and self.tree.exists(self.sel):
                 self.tree.selection_set(self.sel)
                 self.tree.see(self.sel)
+            self._filter_werte_aktualisieren()
+            self.lbl_filter.config(text=f"{len(sicht)} von {len(self._sichtbare_naehte())} angezeigt")
         finally:
             self._tree_sperre = False
 
@@ -1192,6 +1358,44 @@ class App:
             self._form_anwenden(False)
             self._starte_lauf(list(dateien), ziel_projekt=self.p)
 
+    def ordner_hinzufuegen(self):
+        if self.busy:
+            return
+        if self.p is None:
+            return self.dialog_ordner()
+        pfad = filedialog.askdirectory(parent=self.root, title="Ordner mit Zeichnungen (PDF) hinzufügen")
+        if not pfad:
+            return
+        pdfs = lauf.pdfs_in(pfad)
+        if not pdfs:
+            messagebox.showinfo("Keine PDF", "Im Ordner liegen keine PDF-Dateien.", parent=self.root)
+            return
+        self._form_anwenden(False)
+        self._starte_lauf(pdfs, ziel_projekt=self.p)
+
+    def zeichnung_entfernen(self):
+        if self.busy or self.p is None or self.z is None:
+            return
+        z = self.z
+        geprueft = sum(1 for n in z.naehte if n.status in (P.BESTAETIGT, P.GEAENDERT, P.MANUELL))
+        if not messagebox.askyesno(
+                "Zeichnung entfernen",
+                f"'{z.datei}' mit {len(z.aktive())} Nähten ({geprueft} davon geprüft/von Hand) aus dem Projekt entfernen?\n\n"
+                "Die Prüfdaten dieser Zeichnung gehen verloren. Die PDF-Datei selbst bleibt erhalten.", parent=self.root):
+            return
+        self._form_anwenden(False)
+        i = self.p.zeichnungen.index(z)
+        self.p.zeichnungen.remove(z)
+        self.sel = None
+        rest = self.p.zeichnungen
+        self._zeichnung_wechseln(rest[min(i, len(rest) - 1)] if rest else None)
+        self._sichern()
+        if self.z is not None:
+            n = self._naechste_offene_naht()
+            if n is not None and n[0] is self.z:
+                self.waehle(n[1].id, zentrieren=True)
+        self._status(f"Zeichnung '{z.datei}' entfernt.")
+
     def erkennung_wiederholen(self):
         if self.busy or self.z is None:
             return
@@ -1348,6 +1552,41 @@ class App:
             (messagebox.showwarning if fehler else messagebox.showinfo)("Prüf-PDFs", text, parent=self.root)
 
         self._starte_job(f"Erstelle {len(auftraege)} Prüf-PDF(s) ...", arbeit, danach, titel="Prüf-PDFs fehlgeschlagen")
+
+    # ------------------------------------------------------------------------------------------------ Hilfe
+    def _text_fenster(self, titel, seiten, breite=760, hoehe=560):
+        """Fenster mit Reitern; jede Seite ist ein schreibgeschützter Text. seiten = [(Reitertitel, Text)]"""
+        w = tk.Toplevel(self.root)
+        w.title(titel)
+        w.geometry(f"{breite}x{hoehe}")
+        nb = ttk.Notebook(w)
+        nb.pack(fill="both", expand=True, padx=6, pady=6)
+        for kopf, text in seiten:
+            rahmen = ttk.Frame(nb)
+            t = tk.Text(rahmen, wrap="word", padx=10, pady=8, font=("TkDefaultFont", 10), borderwidth=0)
+            sc = ttk.Scrollbar(rahmen, orient="vertical", command=t.yview)
+            t.configure(yscrollcommand=sc.set)
+            sc.pack(side="right", fill="y")
+            t.pack(side="left", fill="both", expand=True)
+            t.tag_configure("kopf", font=("TkDefaultFont", 10, "bold"), spacing1=6)
+            for zeile in text.split("\n"):
+                if zeile and not zeile.startswith(" ") and "  " not in zeile and len(zeile) < 60 and not zeile.endswith("."):
+                    t.insert("end", zeile + "\n", "kopf")
+                else:
+                    t.insert("end", zeile + "\n")
+            t.configure(state="disabled")
+            nb.add(rahmen, text=kopf)
+        ttk.Button(w, text="Schließen", command=w.destroy).pack(pady=(0, 6))
+        return w
+
+    def hilfe_zeigen(self):
+        return self._text_fenster("Bedienung und Farben", HILFE_SEITEN)
+
+    def changelog_zeigen(self):
+        text = ""
+        for version, datum, punkte in CHANGELOG:
+            text += f"Version {version}  ({datum})\n" + "".join(f"  - {p}\n" for p in punkte) + "\n"
+        return self._text_fenster("Änderungsprotokoll", [("Änderungen", text)], breite=700, hoehe=520)
 
     # ------------------------------------------------------------------------------------------------ Ende
     def beenden(self):

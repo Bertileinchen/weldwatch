@@ -10,8 +10,8 @@ STANDARD_CT = "CT 3"
 CP_ZU_CT = {"CP A": "CT 1", "CP B2": "CT 2", "CP C2": "CT 3", "CP B1": "CT 2", "CP C3": "CT 4", "CP C1": "CT 2", "CP D": "CT 4"}
 CP_LISTE = list(CP_ZU_CT)
 # Prüfklasse -> (UT, MT, VT) als Text in der Excel-Liste
-CT_ZU_UMFANG = {"CT 1": ("100 %", "100 %", "100 %"), "CT 2": ("10 %", "10 %", "100 %"),
-                "CT 3": ("-", "-", "100 %"), "CT 4": ("-", "-", "100 %")}
+CT_ZU_UMFANG = {"CT 1": ("100%", "100%", "100%"), "CT 2": ("10%", "10%", "100%"),
+                "CT 3": ("-", "-", "100%"), "CT 4": ("-", "-", "100%")}
 CT_LISTE = list(CT_ZU_UMFANG)
 
 _ROLLEN = (("cp", r"g[üu]e?teklasse"), ("ct", r"pr[üu]e?fklasse"), ("ut", r"\bUT\b|volumetr"),

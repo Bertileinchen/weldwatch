@@ -73,6 +73,7 @@ def write_excel(template, out_path, groups, nr_in_remark=True):
     labels, _w = vorlage_spalten(template)
     rolle = pruefklassen.rollen(labels)
     spalte_von = {r: b for b, r in rolle.items()}
+    prozent_spalten = {spalte_von[r] for r in ("ut", "mt", "vt") if r in spalte_von}
     style = {c: copy.copy(ws.cell(FIRST, c)._style) for c in range(1, 16)}
     height = ws.row_dimensions[FIRST].height
     for r in range(FIRST, max(ws.max_row, FIRST + len(entries_all)) + 1):
@@ -110,7 +111,7 @@ def write_excel(template, out_path, groups, nr_in_remark=True):
             if wert and buchstabe not in ERKANNTE_SPALTEN and buchstabe != (get_column_letter(wps_col) if wps_col else None):
                 zelle = ws[f"{buchstabe}{r}"]
                 zelle.value = wert
-                al = copy.copy(zelle.alignment); al.wrap_text = True
+                al = copy.copy(zelle.alignment); al.wrap_text = buchstabe not in prozent_spalten   # "100%" nie umbrechen
                 zelle.alignment = al
     # Protokoll
     wp = wb.create_sheet("Protokoll")

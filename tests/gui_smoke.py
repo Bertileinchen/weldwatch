@@ -208,9 +208,54 @@ def main():
         pruefe(app.extra_vars[cp].get() == "CP C2" and app.extra_vars[ct].get() == "CT 3" and app.x_umfang["ut"].get() == "-",
                "Standard CP C2 / CT 3 mit Prüfumfang")
         app.extra_vars[cp].set("CP A"); app._klasse_gewaehlt("cp")
-        pruefe(app.extra_vars[ct].get() == "CT 1" and app.x_umfang["mt"].get() == "100 %", "Güteklasse bestimmt Prüfklasse und Prüfumfang")
+        pruefe(app.extra_vars[ct].get() == "CT 1" and app.x_umfang["mt"].get() == "100%", "Güteklasse bestimmt Prüfklasse und Prüfumfang")
         app.extra_fuer_alle(cp)
         pruefe(all(n.extra.get(cp) == "CP A" and n.extra.get(ct) == "CT 1" for n in z.aktive()), "Güteklasse für alle Nähte")
+
+
+        # Filter: "alle"-Knöpfe wirken nur auf angezeigte Nähte
+        for n in z.naehte:
+            n.extra.clear()
+        app._form_fuellen(app._naht())
+        art0 = z.aktive()[0].art
+        app.filter_vars["art"].set(art0); app._filter_geaendert()
+        angez = [n for n in z.aktive() if n.art == art0]
+        pruefe(0 < len(angez) < len(z.aktive()) and {n.id for n in app._gefiltert()} == {n.id for n in angez}, "Filter blendet Nähte aus")
+        pruefe(art0 in app.filter_cbs["art"].opt["values"] and gui.ALLE in app.filter_cbs["art"].opt["values"], "Filterliste enthält die Werte")
+        app.waehle(angez[0].id)
+        app.extra_vars[cp].set("CP A"); app._klasse_gewaehlt("cp"); app.extra_fuer_alle(cp)
+        pruefe(all(n.extra.get(cp) == "CP A" and n.extra.get(ct) == "CT 1" for n in angez), "'alle' trägt bei den angezeigten Nähten ein")
+        pruefe(all(cp not in n.extra for n in z.aktive() if n not in angez), "'alle' lässt ausgeblendete Nähte unberührt")
+        for n in z.aktive():
+            n.status = P.OFFEN
+        app._liste_fuellen()
+        app.alle_bestaetigen()
+        pruefe(all(n.status == P.BESTAETIGT for n in angez) and all(n.status == P.OFFEN for n in z.aktive() if n not in angez),
+               "'Alle bestätigen' nur für angezeigte Nähte")
+        app._filter_loeschen()
+        pruefe(len(app._gefiltert()) == len(z.aktive()), "Filter löschen")
+
+        # stabile Nummern: neue Naht bekommt die nächste Nummer, nichts wird neu nummeriert
+        vor = {n.id: n.nr for n in z.aktive()}
+        mn = P.neue_naht(z, 50, 50)
+        pruefe(mn.nr == max(vor.values()) + 1 and all(n.nr == vor[n.id] for n in z.aktive() if n.id in vor), "von Hand gesetzte Naht: nächste Nummer, andere unverändert")
+        P.loeschen(z, mn)
+
+        # Zeichnungen hinzufügen (Ordner) und entfernen
+        zus = os.path.join(d, "zusatz"); os.makedirs(zus)
+        Image.new("RGB", (1200, 1200), "white").save(os.path.join(zus, "dritte.pdf"), "PDF", resolution=72)
+        gui.filedialog.askdirectory = lambda *a, **k: zus
+        anz0 = len(p.zeichnungen)
+        app.ordner_hinzufuegen()
+        t0 = time.time()
+        while app.busy and time.time() - t0 < 180:
+            root.update(); time.sleep(0.1)
+        pruefe(len(p.zeichnungen) == anz0 + 1, "Ordner zum Projekt hinzugefügt")
+        app.zeichnung_nr(len(p.zeichnungen) - 1)
+        app.zeichnung_entfernen()
+        pruefe(len(p.zeichnungen) == anz0 and app.z in p.zeichnungen, "Zeichnung entfernt")
+        app.hilfe_zeigen(); app.changelog_zeigen()
+        pruefe(True, "Hilfe und Changelog öffnen")
 
         # Beenden: ungespeichertes Projekt fragt nach
         ende = []

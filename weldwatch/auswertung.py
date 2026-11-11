@@ -92,6 +92,8 @@ def build_entries(found, pt_labels, grid, ex, cfg):
             art, angabe, rem = p["art"], p["angabe"], [f"interne Bezeichnung {p['pt']}"]
             box = (w.x0 - 4, w.y0 - 4, w.x1 + 4, w.y1 + 4); cx, cy = w.cx, w.cy
         zusatz, wps = stoss.zusatz(p.get("prefix"), p.get("form"))
+        if wps:
+            wps = "Auswahlhilfe: " + wps
         if art == "Kehlnaht":   # Kehlnähte sind meist T-Stöße und bekommen den Zusatz nie
             zusatz = ""
         out.append(Entry(grid.square(cx, cy) if grid else "-", cx, cy, art, angabe, "",

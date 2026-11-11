@@ -42,9 +42,9 @@ class SpaltenTests(unittest.TestCase):
             v = os.path.join(d, "v.xlsx"); vorlage_machen(v)
             z = beispiel_zeichnung()
             n = z.naehte[0]
-            P.extras_setzen(n, {"I": "WPQR-12", "J": "AP-3", "L": " 100 % VT ", "K": ""})
+            P.extras_setzen(n, {"I": "WPQR-12", "J": "AP-3", "L": " 100% VT ", "K": ""})
             self.assertEqual(n.status, P.OFFEN)
-            self.assertEqual(n.extra, {"I": "WPQR-12", "J": "AP-3", "L": "100 % VT"})
+            self.assertEqual(n.extra, {"I": "WPQR-12", "J": "AP-3", "L": "100% VT"})
             n.wps = "Winkel 60°"
             self.assertEqual(P.extra_fuer_alle(z, "M", "VT"), 3)
             for m in z.naehte:
@@ -54,7 +54,7 @@ class SpaltenTests(unittest.TestCase):
             P.excel_schreiben(p, v, ziel)
             ws = openpyxl.load_workbook(ziel)["SNP"]
             self.assertEqual([ws["I7"].value, ws["J7"].value, ws["L7"].value, ws["M7"].value, ws["G7"].value],
-                             ["WPQR-12", "AP-3", "100 % VT", "VT", "Winkel 60°"])
+                             ["WPQR-12", "AP-3", "100% VT", "VT", "Winkel 60°"])
             self.assertIsNone(ws["I8"].value)                 # andere Nähte ohne Eintrag
             self.assertEqual(ws["M9"].value, "VT")
 
@@ -83,9 +83,9 @@ class PruefklassenTests(unittest.TestCase):
 
     def test_tabelle(self):
         from weldwatch import pruefklassen as K
-        self.assertEqual(K.umfang("CT 1"), ("100 %", "100 %", "100 %"))
-        self.assertEqual(K.umfang("CT 2"), ("10 %", "10 %", "100 %"))
-        self.assertEqual(K.umfang("CT 4"), ("-", "-", "100 %"))
+        self.assertEqual(K.umfang("CT 1"), ("100%", "100%", "100%"))
+        self.assertEqual(K.umfang("CT 2"), ("10%", "10%", "100%"))
+        self.assertEqual(K.umfang("CT 4"), ("-", "-", "100%"))
         self.assertEqual((K.CP_ZU_CT["CP B1"], K.CP_ZU_CT["CP D"]), ("CT 2", "CT 4"))
         self.assertEqual(K.umfang("irgendwas"), ("", "", ""))
 
@@ -102,9 +102,9 @@ class PruefklassenTests(unittest.TestCase):
             P.excel_schreiben(P.Projekt(basis="T", zeichnungen=[z]), v, ziel)
             ws = openpyxl.load_workbook(ziel)["SNP"]
             zeile = lambda r: [ws.cell(r, c).value for c in range(9, 14)]
-            self.assertEqual(zeile(7), ["CP C2", "CT 3", "-", "-", "100 %"])          # Standard
-            self.assertEqual(zeile(8), ["CP A", "CT 1", "100 %", "100 %", "100 %"])
-            self.assertEqual(zeile(9), ["CP B2", "CT 2", "10 %", "10 %", "100 %"])
+            self.assertEqual(zeile(7), ["CP C2", "CT 3", "-", "-", "100%"])          # Standard
+            self.assertEqual(zeile(8), ["CP A", "CT 1", "100%", "100%", "100%"])
+            self.assertEqual(zeile(9), ["CP B2", "CT 2", "10%", "10%", "100%"])
             self.assertEqual(ws["O7"].value, "beidseitig;\ninterne Bezeichnung VH20-100 / VH20-100")
             self.assertTrue(ws["O7"].alignment.wrap_text)
 

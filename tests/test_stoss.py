@@ -33,11 +33,11 @@ class TabelleTests(unittest.TestCase):
 class ErkennungTests(unittest.TestCase):
     def test_hy_t_stoss(self):
         e, = lauf("YH5-125")
-        self.assertEqual((e.art, e.angabe, e.stoss, e.wps), ("HY-Naht", "HY5", "T-Stoß", "T90"))
+        self.assertEqual((e.art, e.angabe, e.stoss, e.wps), ("HY-Naht", "HY5", "T-Stoß", "Auswahlhilfe: T90"))
 
     def test_kehlnaht_nie_t_stoss_aber_winkel(self):
         e, = lauf("L3-67")
-        self.assertEqual((e.art, e.stoss, e.wps), ("Kehlnaht", "", "135°"))
+        self.assertEqual((e.art, e.stoss, e.wps), ("Kehlnaht", "", "Auswahlhilfe: 135°"))
 
     def test_nicht_gelistet(self):
         e, = lauf("L3-1")
@@ -46,7 +46,7 @@ class ErkennungTests(unittest.TestCase):
     def test_beidseitig_gleich(self):
         pt = symbols.find_pt_labels([wort("YH5-125", y=300), wort("YH5-125", y=309)], [], pair=True)
         e, = auswertung.build_entries([], pt, None, None, config.DEFAULTS)
-        self.assertEqual((e.art, e.stoss, e.wps), ("DHY-Naht", "T-Stoß", "T90"))
+        self.assertEqual((e.art, e.stoss, e.wps), ("DHY-Naht", "T-Stoß", "Auswahlhilfe: T90"))
 
 
 class ProjektTests(unittest.TestCase):
@@ -54,8 +54,8 @@ class ProjektTests(unittest.TestCase):
         e, = lauf("VK4-60")
         n = projekt.Naht.aus_entry(e)
         n2 = projekt.Naht.from_dict(n.to_dict())
-        self.assertEqual((n2.stoss, n2.wps), ("T-Stoß", "T90"))
-        self.assertEqual((n2.zu_entry().stoss, n2.zu_entry().wps), ("T-Stoß", "T90"))
+        self.assertEqual((n2.stoss, n2.wps), ("T-Stoß", "Auswahlhilfe: T90"))
+        self.assertEqual((n2.zu_entry().stoss, n2.zu_entry().wps), ("T-Stoß", "Auswahlhilfe: T90"))
         d = n.to_dict(); d.pop("stoss"); d.pop("wps")          # Projektdatei aus 0.5.x
         alt = projekt.Naht.from_dict(d)
         self.assertEqual((alt.stoss, alt.wps), ("", ""))
@@ -82,7 +82,7 @@ class ExcelTests(unittest.TestCase):
     def test_zusatz_und_wps_in_spalten(self):
         ws, _ = self.schreiben(True)
         self.assertEqual([ws.cell(7 + i, 3).value for i in range(3)], ["HY-Naht\nT-Stoß", "Kehlnaht", "Kehlnaht"])
-        self.assertEqual([ws.cell(7 + i, 9).value for i in range(3)], ["T90", "45°", None])
+        self.assertEqual([ws.cell(7 + i, 9).value for i in range(3)], ["Auswahlhilfe: T90", "Auswahlhilfe: 45°", None])
         self.assertTrue(ws.cell(7, 3).alignment.wrap_text)
 
     def test_ohne_wps_ueberschrift_kein_absturz(self):

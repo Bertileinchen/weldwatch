@@ -70,7 +70,7 @@ class ProjektTests(unittest.TestCase):
         self.assertTrue(P.aendern(z, b, angabe="HY16"))   # verändert -> geändert
         self.assertEqual(b.status, P.GEAENDERT)
         P.loeschen(z, c)
-        self.assertEqual((c.status, c.nr), (P.GELOESCHT, 0))
+        self.assertEqual((c.status, c.nr), (P.GELOESCHT, 3))
         self.assertEqual([n.nr for n in z.aktive()], [1, 2])
         self.assertEqual(z.naehte[-1].id, c.id)           # gelöschte stehen hinten
         P.wiederherstellen(z, c)
@@ -150,7 +150,7 @@ class ProjektTests(unittest.TestCase):
             zeilen = [[ws.cell(r, c).value for c in (1, 2, 3, 5, 8, 15)] for r in range(7, 12)]
             self.assertEqual(zeilen[0][:5], ["PF60.100", "A01\n(1)", "HY-Naht", "HY15", "Gr.22/23"])
             self.assertEqual(zeilen[1][:4], ["PF60.100", "B03\n(2)", "Kehlnaht", "HY16"])
-            self.assertEqual(zeilen[2][:5], ["PF60.100", "D04\n(3)", "Kehlnaht", "a4", "Gr.22/23"])
+            self.assertEqual(zeilen[2][:5], ["PF60.100", "D04\n(4)", "Kehlnaht", "a4", "Gr.22/23"])
             self.assertIn("manuell ergänzt", zeilen[2][5])
             self.assertIsNone(zeilen[3][0])                       # gelöschte Naht fehlt, keine vierte Zeile
             self.assertNotIn("V20", [z_[3] for z_ in zeilen])
