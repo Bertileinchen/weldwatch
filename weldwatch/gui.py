@@ -11,7 +11,7 @@ from tkinter import ttk, filedialog, messagebox
 
 from PIL import ImageTk
 
-from . import lauf
+from . import lauf, output
 from . import projekt as P
 from .pdfansicht import Ansicht, PdfSeite
 
@@ -45,7 +45,9 @@ Bedienung
   Naht anklicken = Daten rechts bearbeiten
   Strg+Enter (oder Enter in der Liste) = bestätigen und zur nächsten offenen Naht
   Entf = löschen   N = nächste offene   F = ganze Seite   A = neue Naht setzen (klicken oder Rahmen aufziehen)
-  Strg+S = speichern (läuft zusätzlich automatisch bei jeder Änderung)
+  Strg+Bild auf / Bild ab = vorherige / nächste Zeichnung (oder Knöpfe / Reiter oben)
+  Strg+S = speichern (beim ersten Mal mit 'Speichern unter'; danach wird die Projektdatei einfach aktualisiert)
+  Reiter 'Weitere Excel-Spalten' = WPS, Arbeitsprobe, Prüfumfang usw. eintragen ('→ alle' = für die ganze Zeichnung)
 
 Die Excel-Liste wird erst erstellt, wenn keine Naht mehr offen ist. Ergebnisse sind Vorschläge zur Prüfung durch eine Person."""
 
@@ -93,6 +95,14 @@ class App:
         self._lauf_eingabe = None
         self._lauf_t0 = 0.0
         self._lauf_text = ""
+        self._job_danach = None
+        self._job_hinweis = ""
+        self._job_titel = "Fehler"
+        self.var_zi = tk.IntVar(value=0)
+        self.tab_btns = []
+        self.extra_vars = {}
+        self.x_widgets = []
+        self.wps_buchstabe = None
         self.f_fett = tkfont.nametofont("TkDefaultFont").copy()
         self.f_fett.configure(weight="bold")
         # Zeilenhöhe der Liste an die Schrift koppeln (bei skalierten Bildschirmen sonst überlagerte Zeilen)
@@ -121,6 +131,7 @@ class App:
         d.add_command(label="Speichern unter ...", command=self.speichern_unter)
         d.add_separator()
         d.add_command(label="Excel-Prüfplan erstellen ...", command=self.excel_exportieren)
+        d.add_command(label="Excel-Vorlage wählen ...", command=self.vorlage_waehlen)
         d.add_separator()
         d.add_command(label="Beenden", command=self.beenden)
         m.add_cascade(label="Datei", menu=d)
@@ -134,6 +145,9 @@ class App:
         a.add_command(label="Ganze Seite", accelerator="F", command=self.ganze_seite)
         a.add_command(label="Vergrößern", accelerator="+", command=lambda: self.zoom_schritt(1.4))
         a.add_command(label="Verkleinern", accelerator="-", command=lambda: self.zoom_schritt(1 / 1.4))
+        a.add_separator()
+        a.add_command(label="Vorherige Zeichnung", accelerator="Strg+Bild auf", command=lambda: self.zeichnung_weiter(-1))
+        a.add_command(label="Nächste Zeichnung", accelerator="Strg+Bild ab", command=lambda: self.zeichnung_weiter(1))
         a.add_separator()
         a.add_command(label="Erkennung dieser Zeichnung wiederholen (Prüfung bleibt erhalten)", command=self.erkennung_wiederholen)
         m.add_cascade(label="Ansicht", menu=a)
@@ -154,10 +168,15 @@ class App:
         ttk.Button(tb, text="Ganze Seite (F)", command=self.ganze_seite).pack(side="left")
         ttk.Button(tb, text="+", width=3, command=lambda: self.zoom_schritt(1.4)).pack(side="left", padx=(8, 0))
         ttk.Button(tb, text="-", width=3, command=lambda: self.zoom_schritt(1 / 1.4)).pack(side="left")
+        ttk.Button(tb, text="◀ Zeichnung", command=lambda: self.zeichnung_weiter(-1)).pack(side="left", padx=(12, 0))
+        ttk.Button(tb, text="Zeichnung ▶", command=lambda: self.zeichnung_weiter(1)).pack(side="left", padx=(2, 0))
         self.btn_excel = ttk.Button(tb, text="Excel-Prüfplan erstellen ...", command=self.excel_exportieren)
         self.btn_excel.pack(side="right")
         self.lbl_offen = ttk.Label(tb, text="", font=self.f_fett)
         self.lbl_offen.pack(side="right", padx=12)
+
+        self.tabs = ttk.Frame(self.root, padding=(6, 0))
+        self.tabs.pack(side="top", fill="x")
 
         sb = ttk.Frame(self.root, padding=(6, 2))
         sb.pack(side="bottom", fill="x")
@@ -231,16 +250,23 @@ class App:
         self.tree.bind("<<TreeviewSelect>>", self._tree_gewaehlt)
 
         r += 1
-        form = ttk.LabelFrame(rechts, text="Naht", padding=6)
-        form.grid(row=r, column=0, sticky="ew", pady=(6, 0))
+        self.nb = ttk.Notebook(rechts)
+        self.nb.grid(row=r, column=0, sticky="ew", pady=(6, 0))
+        form = ttk.Frame(self.nb, padding=6)
         form.columnconfigure(1, weight=1)
+        self.nb.add(form, text="Naht")
+        self.extra_tab = ttk.Frame(self.nb, padding=6)
+        self.extra_tab.columnconfigure(1, weight=1)
+        self.nb.add(self.extra_tab, text="Weitere Excel-Spalten")
         self.v = {k: tk.StringVar() for k in ("square", "art", "stoss", "dicke", "gruppe", "wps", "bem")}
         self.f_widgets = []
         zeile = 0
 
         def feld(text, widget):
             nonlocal zeile
-            ttk.Label(form, text=text).grid(row=zeile, column=0, sticky="nw", padx=(0, 6), pady=1)
+            lbl = ttk.Label(form, text=text)
+            lbl.grid(row=zeile, column=0, sticky="nw", padx=(0, 6), pady=1)
+            widget._lbl = lbl
             widget.grid(row=zeile, column=1, sticky="ew", pady=1)
             self.f_widgets.append(widget)
             zeile += 1
@@ -252,7 +278,7 @@ class App:
         self.e_dicke = feld("Dicke (Sp. D)", ttk.Entry(form, textvariable=self.v["dicke"], width=8))
         self.t_angabe = feld("Zeichnungs-\nangabe", tk.Text(form, height=3, width=26, wrap="word", undo=True))
         self.c_gruppe = feld("Werkstoffgruppe", ttk.Combobox(form, textvariable=self.v["gruppe"], values=GRUPPEN))
-        self.e_wps = feld("WPS-Zusatzinfo\n(Winkel)", ttk.Entry(form, textvariable=self.v["wps"], width=12))
+        self.e_wps = feld("WPS\n(vorbelegt: Winkel)", ttk.Entry(form, textvariable=self.v["wps"], width=16))
         self.e_bem = feld("Bemerkung\n(mit ; trennen)", ttk.Entry(form, textvariable=self.v["bem"]))
         self.lbl_quelle = ttk.Label(form, text="", foreground="#555555", wraplength=330, justify="left")
         self.lbl_quelle.grid(row=zeile, column=0, columnspan=2, sticky="w", pady=(4, 0))
@@ -267,11 +293,14 @@ class App:
         self.btn_ok.pack(side="left", fill="x", expand=True)
         self.btn_del = ttk.Button(bf, text="Löschen (Entf)", command=self.naht_loeschen)
         self.btn_del.pack(side="left", padx=(6, 0))
+        self._extras_aufbauen()
         self._form_fuellen(None)
 
     def _tasten(self):
         r = self.root
         r.bind("<Control-s>", lambda e: self.speichern())
+        r.bind("<Control-Prior>", lambda e: (self.zeichnung_weiter(-1), "break")[1])
+        r.bind("<Control-Next>", lambda e: (self.zeichnung_weiter(1), "break")[1])
         r.bind("<Control-Return>", lambda e: (self.naht_bestaetigen(), "break")[1])
         r.bind("<Key>", self._taste)
 
@@ -314,12 +343,77 @@ class App:
             if self.var_neu.get():
                 self.neu_modus_umschalten()
 
+    # ------------------------------------------------------------------------------------------------ Weitere Excel-Spalten
+    def _vorlage_pfad(self):
+        v = (self.p.vorlage if self.p else "") or lauf.default_vorlage()
+        return v if os.path.exists(v) else ""
+
+    def _extras_aufbauen(self):
+        """Eingabefelder für alle Spalten der Excel-Vorlage, die nicht erkannt werden (Überschriften aus der Vorlage)."""
+        for w in self.extra_tab.winfo_children():
+            w.destroy()
+        self.extra_vars, self.x_widgets = {}, []
+        labels, wps = {}, None
+        v = self._vorlage_pfad()
+        if v:
+            try:
+                labels, wps = output.vorlage_spalten(v)
+            except Exception:
+                labels = {}
+        if not labels:
+            labels = {b: f"Spalte {b}" for b in "ABCDEFGHIJKLMNO"}
+        self.wps_buchstabe = wps
+        self.e_wps._lbl.config(text=(f"WPS (Sp. {wps})\n(vorbelegt: Winkel)" if wps else "WPS\n(vorbelegt: Winkel)"))
+        zeile = 0
+        for b, t in output.zusatz_spalten(labels, wps):
+            ttk.Label(self.extra_tab, text=f"{t}  (Sp. {b})", wraplength=170, justify="left").grid(row=zeile, column=0, sticky="w", padx=(0, 6), pady=1)
+            var = tk.StringVar()
+            e = ttk.Entry(self.extra_tab, textvariable=var)
+            e.grid(row=zeile, column=1, sticky="ew", pady=1)
+            e.bind("<Return>", lambda ev: (self.naht_bestaetigen(), "break")[1])
+            btn = ttk.Button(self.extra_tab, text="→ alle", width=7, command=lambda b=b: self.extra_fuer_alle(b))
+            btn.grid(row=zeile, column=2, padx=(4, 0), pady=1)
+            self.extra_vars[b] = var
+            self.x_widgets += [e, btn]
+            zeile += 1
+        ttk.Label(self.extra_tab, foreground="#555555", wraplength=330, justify="left",
+                  text="Diese Angaben gehen unverändert in die Excel-Liste. '→ alle' trägt den Wert bei allen Nähten dieser "
+                       "Zeichnung ein. Sie ändern den Prüfstatus nicht.").grid(row=zeile, column=0, columnspan=3, sticky="w", pady=(6, 0))
+        self._form_fuellen(self._naht())
+
+    def vorlage_waehlen(self):
+        if self.p is None:
+            messagebox.showinfo("Excel-Vorlage", "Es ist kein Projekt geöffnet.", parent=self.root)
+            return
+        v = filedialog.askopenfilename(parent=self.root, title="Excel-Vorlage Prüfplan wählen (Blatt SNP)",
+                                       filetypes=[("Excel", "*.xlsx")])
+        if v:
+            self.p.vorlage = v
+            self._extras_aufbauen()
+            self._sichern()
+
+    def extra_fuer_alle(self, b):
+        if self.z is None or b not in self.extra_vars:
+            return
+        wert = self.extra_vars[b].get().strip()
+        anz = len(self.z.aktive())
+        text = (f"'{wert}' bei allen {anz} Nähten dieser Zeichnung eintragen?" if wert
+                else f"Diese Spalte bei allen {anz} Nähten dieser Zeichnung leeren?")
+        if not messagebox.askyesno("Für alle Nähte", text + "\nVorhandene Einträge in dieser Spalte werden überschrieben.", parent=self.root):
+            return
+        self._form_anwenden(False)
+        P.extra_fuer_alle(self.z, b, wert)
+        self._form_fuellen(self._naht())
+        self._sichern()
+        self._status(f"Spalte {b}: bei {anz} Nähten eingetragen.")
+
     # ------------------------------------------------------------------------------------------------ Projekt
     def projekt_setzen(self, p):
         self.p = p
         self.sel = None
         arten = sorted({n.art for z in p.zeichnungen for n in z.naehte if n.art} - set(ARTEN))
         self.c_art.configure(values=ARTEN + arten)
+        self._extras_aufbauen()
         self._pruefe_pdfs()
         erste = next((z for z in p.zeichnungen if z.offene()), p.zeichnungen[0] if p.zeichnungen else None)
         self._zeichnung_wechseln(erste)
@@ -400,21 +494,63 @@ class App:
         if not self.p:
             self.cb_zeichnung.configure(values=[])
             self.var_zeichnung.set("")
+            self._tabs_aktualisieren()
             return
         texte = [f"{z.datei}  ({len(z.aktive())} Nähte, {len(z.offene())} offen)" for z in self.p.zeichnungen]
         self.cb_zeichnung.configure(values=texte)
         if self.z in self.p.zeichnungen:
             self.var_zeichnung.set(texte[self.p.zeichnungen.index(self.z)])
+            self.var_zi.set(self.p.zeichnungen.index(self.z))
+        self._tabs_aktualisieren()
         offen = self.p.anzahl_offen()
         self.lbl_offen.config(text=f"offen: {offen} von {self.p.anzahl_aktiv()}", foreground="#b25b00" if offen else "#2e7d32")
+
+    def _tabs_aktualisieren(self):
+        """Reiterleiste mit allen Zeichnungen (bis 8 Stück) zum direkten Umschalten, mit Anzahl offener Nähte."""
+        zs = self.p.zeichnungen if self.p else []
+        if len(zs) < 2 or len(zs) > 8:
+            for b in self.tab_btns:
+                b.destroy()
+            self.tab_btns = []
+            return
+        if len(self.tab_btns) != len(zs):
+            for b in self.tab_btns:
+                b.destroy()
+            self.tab_btns = []
+            for i in range(len(zs)):
+                b = ttk.Radiobutton(self.tabs, style="Toolbutton", variable=self.var_zi, value=i,
+                                    command=lambda i=i: self.zeichnung_nr(i))
+                b.pack(side="left", padx=(0, 3))
+                self.tab_btns.append(b)
+        for i, (b, z) in enumerate(zip(self.tab_btns, zs)):
+            o = len(z.offene())
+            name = z.datei if len(z.datei) <= 26 else z.datei[:23] + "..."
+            b.config(text=f"{i + 1}. {name}  " + (f"({o} offen)" if o else "✓"))
+
+    def zeichnung_nr(self, i):
+        """Zur Zeichnung Nr. i (0-basiert) wechseln - ohne Bedingung, die vorige muss nicht fertig sein."""
+        if self.busy or not self.p or not (0 <= i < len(self.p.zeichnungen)):
+            return
+        if self.p.zeichnungen[i] is self.z:
+            return
+        self._form_anwenden(False)
+        z = self.p.zeichnungen[i]
+        self._zeichnung_wechseln(z)
+        akt = z.aktive()
+        n = next((m for m in akt if m.offen), None) or (akt[0] if akt else None)
+        if n is not None:
+            self.waehle(n.id, zentrieren=True)
+
+    def zeichnung_weiter(self, delta):
+        if self.busy or not self.p or not self.p.zeichnungen:
+            return
+        i = self.p.zeichnungen.index(self.z) if self.z in self.p.zeichnungen else 0
+        self.zeichnung_nr((i + delta) % len(self.p.zeichnungen))
 
     def _zeichnung_gewaehlt(self, _e=None):
         if self.busy or not self.p:
             return
-        self._form_anwenden(False)
-        i = self.cb_zeichnung.current()
-        if 0 <= i < len(self.p.zeichnungen) and self.p.zeichnungen[i] is not self.z:
-            self._zeichnung_wechseln(self.p.zeichnungen[i])
+        self.zeichnung_nr(self.cb_zeichnung.current())
 
     def _dn_uebernehmen(self, _e=None):
         if self.z is not None and self.var_dn.get().strip() != self.z.dn:
@@ -477,15 +613,15 @@ class App:
 
     # ------------------------------------------------------------------------------------------------ Formular
     def _form_fuellen(self, n):
-        for w in self.f_widgets:
+        for w in self.f_widgets + self.x_widgets:
             w.configure(state="normal")
         self.t_angabe.delete("1.0", "end")
         if n is None:
-            for v in self.v.values():
+            for v in list(self.v.values()) + list(self.extra_vars.values()):
                 v.set("")
             self._snap = None
             self.lbl_quelle.config(text="Keine Naht gewählt. Naht in der Zeichnung oder in der Liste anklicken.")
-            for w in self.f_widgets:
+            for w in self.f_widgets + self.x_widgets:
                 self._sperren(w)
             self.btn_ok.state(["disabled"])
             self.btn_del.state(["disabled"])
@@ -498,6 +634,8 @@ class App:
         self.v["gruppe"].set(n.gruppe)
         self.v["wps"].set(n.wps)
         self.v["bem"].set("; ".join(n.bemerkung))
+        for b, var in self.extra_vars.items():
+            var.set(n.extra.get(b, ""))
         hinweis = "" if n.ok or n.status != P.OFFEN else "  -  Erkennung unsicher, bitte genau prüfen"
         self.lbl_quelle.config(text=f"Nr. {n.nr or '-'}  |  Quelle: {n.quelle}  |  Status: {n.status}{hinweis}")
         self._snap = self._form_werte()
@@ -507,7 +645,7 @@ class App:
             self.btn_del.config(text="Löschen (Entf)")
         else:
             self.btn_del.config(text="Wiederherstellen (Entf)")
-            for w in self.f_widgets:
+            for w in self.f_widgets + self.x_widgets:
                 self._sperren(w)
             self.btn_ok.state(["disabled"])
 
@@ -518,7 +656,8 @@ class App:
     def _form_werte(self):
         return dict(square=self.v["square"].get().strip(), art=self.v["art"].get().strip(), stoss=self.v["stoss"].get().strip(),
                     dicke=self.v["dicke"].get().strip(), angabe=self.t_angabe.get("1.0", "end-1c").strip(),
-                    gruppe=self.v["gruppe"].get().strip(), wps=self.v["wps"].get().strip(), bem=self.v["bem"].get().strip())
+                    gruppe=self.v["gruppe"].get().strip(), wps=self.v["wps"].get().strip(), bem=self.v["bem"].get().strip(),
+                    x={b: v.get().strip() for b, v in self.extra_vars.items()})
 
     def _form_anwenden(self, bestaetigen):
         """Formularwerte in die Naht übernehmen. bestaetigen=True prüft zusätzlich auf Vollständigkeit.
@@ -539,8 +678,13 @@ class App:
                         f"'{w['gruppe']}' passt nicht zum Schema (Gr.1-11, Gr.21-26 nur als Gr.22/23, Mischverbindung 'Gr.1 + Gr.8').\n\n"
                         "Trotzdem übernehmen?", parent=self.root):
                     return False
-        P.aendern(self.z, n, square=w["square"] or n.square, art=w["art"], stoss=w["stoss"], dicke=w["dicke"],
-                  angabe=w["angabe"], gruppe=w["gruppe"], wps=w["wps"], bemerkung=w["bem"])
+        erkannt = ("square", "art", "stoss", "dicke", "angabe", "gruppe", "bem")
+        if bestaetigen or any(w[k] != self._snap[k] for k in erkannt):
+            P.aendern(self.z, n, square=w["square"] or n.square, art=w["art"], stoss=w["stoss"], dicke=w["dicke"],
+                      angabe=w["angabe"], gruppe=w["gruppe"], bemerkung=w["bem"])
+        # WPS und weitere Excel-Spalten sind reine Eingabedaten: ändern den Prüfstatus nicht
+        n.wps = w["wps"]
+        P.extras_setzen(n, w["x"])
         self._snap = self._form_werte()
         self._nach_aenderung()
         return True
@@ -820,42 +964,101 @@ class App:
     def _status(self, text):
         self.var_status.set(text)
 
-    def _sichern(self):
-        if self.p is not None and self.p.pfad:
-            try:
-                self.p.speichern()
-            except OSError as ex:
-                self._status(f"Speichern der Projektdatei fehlgeschlagen: {ex}")
+    def _sichern(self, p=None):
+        """Automatisches Sichern nach jeder Änderung: ins Projekt, sobald es einen Speicherort hat, vorher in eine Sicherungsdatei."""
+        p = p or self.p
+        if p is None:
+            return
+        try:
+            if p.pfad:
+                p.speichern()
+            else:
+                p.speichern(lauf.sicherung_pfad(p.basis), merke=False)
+        except OSError as ex:
+            self._status(f"Speichern der Projektdatei fehlgeschlagen: {ex}")
 
     def speichern(self):
+        """Erstes Speichern: 'Speichern unter' (Ordner für alle Ausgaben). Danach wird die Projektdatei nur aktualisiert."""
         if self.p is None:
-            return
+            return False
         self._form_anwenden(False)
         if not self.p.pfad:
             return self.speichern_unter()
         try:
             self.p.speichern()
             self._status(f"Gespeichert: {self.p.pfad}")
+            return True
         except OSError as ex:
             messagebox.showerror("Speichern", f"Projektdatei konnte nicht gespeichert werden:\n{ex}", parent=self.root)
+            return False
 
     def speichern_unter(self):
         if self.p is None:
-            return
+            return False
+        if self.busy:
+            messagebox.showinfo("Bitte warten", "Es läuft gerade eine Erkennung.", parent=self.root)
+            return False
         self._form_anwenden(False)
-        ziel = filedialog.asksaveasfilename(parent=self.root, title="Projekt speichern unter", defaultextension=P.ENDUNG,
-                                            initialdir=os.path.dirname(self.p.pfad) if self.p.pfad else lauf.ausgabe_ordner(),
-                                            initialfile=os.path.basename(self.p.pfad) if self.p.pfad else self.p.basis + P.ENDUNG,
+        p = self.p
+        ziel = filedialog.asksaveasfilename(parent=self.root, title="Projekt speichern unter (in diesen Ordner kommen auch alle Ausgaben)",
+                                            defaultextension=P.ENDUNG,
+                                            initialdir=os.path.dirname(p.pfad) if p.pfad else lauf.ausgabe_ordner(),
+                                            initialfile=os.path.basename(p.pfad) if p.pfad else p.basis + P.ENDUNG,
                                             filetypes=[("WeldWatch-Projekt", "*" + P.ENDUNG)])
         if not ziel:
-            return
+            return False
+        ordner = os.path.dirname(os.path.abspath(ziel))
+        kopieren = p.pdfs_kopiert
+        if not kopieren and p.zeichnungen:
+            kopieren = messagebox.askyesno(
+                "Zeichnungen mitspeichern?",
+                "Sollen die Zeichnungs-PDFs mit ins Projekt gespeichert werden?\n\n"
+                f"Ja = Kopie im Unterordner 'Zeichnungen' neben der Projektdatei. Das Projekt bleibt vollständig, "
+                "auch wenn die Originale verschoben oder geändert werden.\n"
+                "Nein = das Projekt verweist weiter auf die Originaldateien.\n\nDie Originale bleiben in jedem Fall unverändert.",
+                parent=self.root)
         try:
-            self.p.speichern(ziel)
+            if kopieren:
+                _kopiert, fehlt = P.pdfs_kopieren(p, ordner)
+                if fehlt:
+                    messagebox.showwarning("Zeichnungen nicht gefunden", "Diese PDFs konnten nicht kopiert werden:\n  " + "\n  ".join(fehlt),
+                                           parent=self.root)
+            p.speichern(ziel)
         except OSError as ex:
-            messagebox.showerror("Speichern", f"Projektdatei konnte nicht gespeichert werden:\n{ex}", parent=self.root)
-            return
+            messagebox.showerror("Speichern", f"Projekt konnte nicht gespeichert werden:\n{ex}", parent=self.root)
+            return False
+        try:   # Sicherungsdatei wird nicht mehr gebraucht
+            os.remove(lauf.sicherung_pfad(p.basis))
+        except OSError:
+            pass
+        lauf.merke_projekt(p.eingabe, ziel)
+        self._seite_neu_oeffnen()
         self._titel()
         self._status(f"Gespeichert: {ziel}")
+        return True
+
+    def _seite_neu_oeffnen(self):
+        """PDF der aktuellen Zeichnung neu öffnen (z. B. nach dem Kopieren ins Projekt), Ansicht und Auswahl bleiben."""
+        if self.busy or self.z is None:
+            return
+        try:
+            if self.seite is not None:
+                self.seite.schliessen()
+            self.seite = PdfSeite(self.z.pfad)
+        except Exception as ex:
+            self.seite = None
+            self._status(f"PDF kann nicht angezeigt werden: {ex}")
+        self._zeichnen_alles()
+
+    def _ungespeichert_fragen(self):
+        """True = weitermachen. Fragt bei einem noch nie gespeicherten Projekt, ob gespeichert werden soll."""
+        if self.p is None or self.p.pfad or not self.p.zeichnungen:
+            return True
+        a = messagebox.askyesnocancel("Projekt speichern?", "Das aktuelle Projekt wurde noch nicht gespeichert.\n\nJetzt speichern?",
+                                      parent=self.root)
+        if a is None:
+            return False
+        return self.speichern() if a else True
 
     def dialog_oeffnen(self):
         if self.busy:
@@ -878,6 +1081,12 @@ class App:
             messagebox.showinfo("Bitte warten", "Es läuft gerade eine Erkennung.", parent=self.root)
             return
         pfad = pfad.strip().strip('"')
+        if not (pfad.lower().endswith(P.ENDUNG) or os.path.isdir(pfad) or pfad.lower().endswith(".pdf")):
+            messagebox.showinfo("Nicht unterstützt", "Bitte eine PDF-Datei, einen Ordner mit PDFs oder eine Projektdatei (.wwp) wählen.",
+                                parent=self.root)
+            return
+        if not self._ungespeichert_fragen():
+            return
         if pfad.lower().endswith(P.ENDUNG):
             self.projekt_oeffnen(pfad)
         elif os.path.isdir(pfad) or pfad.lower().endswith(".pdf"):
@@ -886,9 +1095,16 @@ class App:
             messagebox.showinfo("Nicht unterstützt", "Bitte eine PDF-Datei, einen Ordner mit PDFs oder eine Projektdatei (.wwp) wählen.",
                                 parent=self.root)
 
+    @staticmethod
+    def _laden(pfad):
+        p = P.Projekt.laden(pfad)
+        if os.path.basename(os.path.dirname(os.path.abspath(pfad))) == "_Sicherung":
+            p.pfad = ""          # nur die automatische Sicherung: Speicherort wird beim Speichern abgefragt
+        return p
+
     def projekt_oeffnen(self, pfad):
         try:
-            p = P.Projekt.laden(pfad)
+            p = self._laden(pfad)
         except Exception as ex:
             messagebox.showerror("Projekt öffnen", f"Projektdatei konnte nicht gelesen werden:\n{ex}", parent=self.root)
             return
@@ -902,8 +1118,8 @@ class App:
         if not pdfs:
             messagebox.showinfo("Keine PDF", "Im Ordner liegen keine PDF-Dateien.", parent=self.root)
             return
-        ziel = lauf.standard_projektpfad(pfad)
-        if os.path.exists(ziel):
+        ziel = lauf.finde_projekt(pfad)
+        if ziel:
             a = messagebox.askyesnocancel(
                 "Projekt vorhanden",
                 f"Für '{lauf.projektname(pfad)}' gibt es schon ein Projekt:\n{ziel}\n\n"
@@ -916,7 +1132,7 @@ class App:
                 self.projekt_oeffnen(ziel)
                 return
             try:
-                p = P.Projekt.laden(ziel)
+                p = self._laden(ziel)
             except Exception as ex:
                 messagebox.showerror("Projekt öffnen", f"Vorhandenes Projekt nicht lesbar:\n{ex}", parent=self.root)
                 return
@@ -940,22 +1156,23 @@ class App:
         self._form_anwenden(False)
         self._starte_lauf([self.z.pfad], ziel_projekt=self.p)
 
-    # ------------------------------------------------------------------------------------------------ Erkennungslauf
-    def _starte_lauf(self, pdfs, eingabe=None, ziel_projekt=None):
+    # ------------------------------------------------------------------------------------------------ Hintergrundjobs
+    def _starte_job(self, text, arbeit, danach, hinweis="", titel="Fehler"):
+        """arbeit(fortschritt) läuft im Hintergrund (fortschritt(text) meldet den Stand), danach(ergebnis) im Hauptthread."""
         self.busy = True
-        self._lauf_ziel, self._lauf_eingabe = ziel_projekt, eingabe
+        self._job_danach, self._job_hinweis, self._job_titel = danach, hinweis, titel
         self._lauf_t0 = time.time()
-        self._lauf_text = f"Erkenne {len(pdfs)} Zeichnung(en) ..."
+        self._lauf_text = text
         self.progress.start(12)
+        self._zeichnen_alles()
 
-        def arbeit():
+        def thread():
             try:
-                res = lauf.erkennen(pdfs, fortschritt=lambda i, n, f: self.q.put(("fortschritt", i, n, f)))
-                self.q.put(("fertig", res))
+                self.q.put(("fertig", arbeit(lambda t: self.q.put(("fortschritt", t)))))
             except BaseException:
                 self.q.put(("fehler", traceback.format_exc()))
 
-        threading.Thread(target=arbeit, daemon=True).start()
+        threading.Thread(target=thread, daemon=True).start()
         self._poll()
 
     def _poll(self):
@@ -964,40 +1181,57 @@ class App:
             while True:
                 m = self.q.get_nowait()
                 if m[0] == "fortschritt":
-                    self._lauf_text = f"Erkenne {m[3]} ({m[1] + 1}/{m[2]}) ..."
+                    self._lauf_text = m[1]
                 else:
                     fertig = m
         except queue.Empty:
             pass
         sek = int(time.time() - self._lauf_t0)
-        self._status(f"{self._lauf_text}  {sek // 60}:{sek % 60:02d} min  (A0-Scans brauchen mehrere Minuten)")
+        self._status(f"{self._lauf_text}  {sek // 60}:{sek % 60:02d} min  {self._job_hinweis}")
         if fertig is None:
             self.root.after(300, self._poll)
         else:
-            self._lauf_fertig(fertig)
+            self._job_fertig(fertig)
 
-    def _lauf_fertig(self, m):
+    def _job_fertig(self, m):
         self.busy = False
         self.progress.stop()
         if m[0] == "fehler":
-            self._status("Erkennung fehlgeschlagen.")
-            messagebox.showerror("Erkennung fehlgeschlagen", m[1][-1500:], parent=self.root)
+            self._status(f"{self._job_titel}.")
+            messagebox.showerror(self._job_titel, m[1][-1500:], parent=self.root)
+            self._zeichnen_alles()
             return
-        res = m[1]
+        self._job_danach(m[1])
+        self._zeichnen_alles()
+
+    # ------------------------------------------------------------------------------------------------ Erkennungslauf
+    def _starte_lauf(self, pdfs, eingabe=None, ziel_projekt=None):
+        self._lauf_ziel, self._lauf_eingabe = ziel_projekt, eingabe
+
+        def arbeit(fort):
+            return lauf.erkennen(pdfs, fortschritt=lambda i, n, f: fort(f"Erkenne {f} ({i + 1}/{n}) ..."))
+
+        self._starte_job(f"Erkenne {len(pdfs)} Zeichnung(en) ...", arbeit, self._lauf_fertig,
+                         hinweis="(A0-Scans brauchen mehrere Minuten)", titel="Erkennung fehlgeschlagen")
+
+    def _lauf_fertig(self, res):
         meldungen = []
         if self._lauf_ziel is not None:
             p = self._lauf_ziel
             meldungen = lauf.einarbeiten(p, res)
         else:
             p = lauf.neues_projekt(self._lauf_eingabe, res)
-        try:
-            p.speichern()
-        except OSError as ex:
-            meldungen.append(f"Projektdatei konnte nicht gespeichert werden: {ex}")
+        if p.pfad and p.pdfs_kopiert:     # neu aufgenommene Zeichnungen ebenfalls ins Projekt kopieren
+            try:
+                P.pdfs_kopieren(p, os.path.dirname(os.path.abspath(p.pfad)))
+            except OSError as ex:
+                meldungen.append(f"Zeichnung konnte nicht ins Projekt kopiert werden: {ex}")
+        self._sichern(p)
         fehler = [z for z in res if z.status != "ok"]
         gesamt = sum(len(z.naehte) for z in res)
         self.projekt_setzen(p)
-        text = f"{len(res)} Zeichnung(en), {gesamt} Nähte erkannt.\nProjekt: {p.pfad}\n\nAlle Vorschläge müssen geprüft werden."
+        ort = p.pfad or "noch nicht gespeichert (Strg+S = Speichern unter)"
+        text = f"{len(res)} Zeichnung(en), {gesamt} Nähte erkannt.\nProjekt: {ort}\n\nAlle Vorschläge müssen geprüft werden."
         if meldungen:
             text += "\n\n" + "\n".join(meldungen)
         if fehler:
@@ -1028,8 +1262,15 @@ class App:
             if not vorlage:
                 return
             self.p.vorlage = vorlage
+            self._extras_aufbauen()
+        if not self.p.pfad:     # Ausgaben liegen im Projektordner: erst Speicherort festlegen
+            messagebox.showinfo("Projekt speichern", "Bitte zuerst den Speicherort des Projekts wählen.\n"
+                                "Excel-Liste und Prüf-PDFs werden standardmäßig im selben Ordner abgelegt.", parent=self.root)
+            if not self.speichern_unter():
+                return
+        ordner = os.path.dirname(os.path.abspath(self.p.pfad))
         ziel = filedialog.asksaveasfilename(parent=self.root, title="Excel-Prüfplan speichern", defaultextension=".xlsx",
-                                            initialdir=lauf.ausgabe_ordner(), initialfile=f"{self.p.basis}_Pruefplan.xlsx",
+                                            initialdir=ordner, initialfile=f"{self.p.basis}_Pruefplan.xlsx",
                                             filetypes=[("Excel", "*.xlsx")])
         if not ziel:
             return
@@ -1040,7 +1281,31 @@ class App:
             return
         self._sichern()
         self._status(f"Excel erstellt: {ziel}")
-        messagebox.showinfo("Excel erstellt", f"{n} Nähte aus {len(self.p.zeichnungen)} Zeichnung(en):\n{ziel}", parent=self.root)
+        text = f"{n} Nähte aus {len(self.p.zeichnungen)} Zeichnung(en):\n{ziel}"
+        pdf_ordner = os.path.splitext(ziel)[0] + "_Pruef-PDFs"
+        if messagebox.askyesno("Excel erstellt", text + f"\n\nPrüf-PDFs (Zeichnungen mit nummerierten Markierungen der Nähte) mit exportieren?\n"
+                               f"Sie kommen in den Unterordner:\n{pdf_ordner}", parent=self.root):
+            self.pruef_pdfs_exportieren(pdf_ordner)
+
+    def pruef_pdfs_exportieren(self, ordner):
+        auftraege = P.pruef_auftraege(self.p)
+        if not auftraege:
+            messagebox.showinfo("Prüf-PDFs", "Keine Zeichnung mit Nähten vorhanden.", parent=self.root)
+            return
+
+        def arbeit(fort):
+            return P.pruef_pdfs_schreiben(auftraege, ordner,
+                                          fortschritt=lambda i, n, f: fort(f"Prüf-PDF {f} ({i + 1}/{n}) ..."))
+
+        def danach(res):
+            geschrieben, fehler = res
+            text = f"{len(geschrieben)} Prüf-PDF(s) in:\n{ordner}"
+            if fehler:
+                text += "\n\nNicht erstellt:\n" + "\n".join("  " + e for e in fehler)
+            self._status(f"Prüf-PDFs erstellt: {ordner}")
+            (messagebox.showwarning if fehler else messagebox.showinfo)("Prüf-PDFs", text, parent=self.root)
+
+        self._starte_job(f"Erstelle {len(auftraege)} Prüf-PDF(s) ...", arbeit, danach, titel="Prüf-PDFs fehlgeschlagen")
 
     # ------------------------------------------------------------------------------------------------ Ende
     def beenden(self):
@@ -1048,11 +1313,14 @@ class App:
             return
         try:
             self._form_anwenden(False)
+            if not self._ungespeichert_fragen():
+                return
             self._sichern()
-        finally:
-            if self.seite is not None:
-                self.seite.schliessen()
-            self.root.destroy()
+        except Exception:
+            pass     # Beenden soll nie am Sichern scheitern
+        if self.seite is not None:
+            self.seite.schliessen()
+        self.root.destroy()
 
 
 # ---------------------------------------------------------------------------------------------------- Start

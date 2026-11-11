@@ -44,6 +44,7 @@ class Naht:
     id: str = field(default_factory=_neue_id)
     stoss: str = ""                      # Zusatz unter der Nahtart (T-Stoß)
     wps: str = ""                        # Zusatzinfo (Winkel) für die WPS-Auswahl
+    extra: dict = field(default_factory=dict)   # weitere Excel-Spalten (Buchstabe -> Text), von Hand ausgefüllt
 
     @property
     def aktiv(self):
@@ -62,7 +63,7 @@ class Naht:
         d = dict(id=self.id, nr=self.nr, square=self.square, x=round(self.x, 2), y=round(self.y, 2), art=self.art,
                  angabe=self.angabe, dicke=self.dicke, gruppe=self.gruppe, bemerkung=list(self.bemerkung),
                  ok=self.ok, quelle=self.quelle, box=[round(v, 2) for v in self.box], status=self.status,
-                 stoss=self.stoss, wps=self.wps)
+                 stoss=self.stoss, wps=self.wps, extra={k: v for k, v in self.extra.items() if v})
         return d
 
     @classmethod
@@ -71,7 +72,8 @@ class Naht:
                 angabe=d.get("angabe", ""), dicke=d.get("dicke", ""), gruppe=d.get("gruppe", "Gr.1"),
                 bemerkung=list(d.get("bemerkung", [])), ok=bool(d.get("ok", True)), quelle=d.get("quelle", "ISO"),
                 box=tuple(d.get("box", (0, 0, 0, 0))), status=d.get("status", OFFEN), nr=int(d.get("nr", 0)),
-                id=d.get("id") or _neue_id(), stoss=d.get("stoss", ""), wps=d.get("wps", ""))
+                id=d.get("id") or _neue_id(), stoss=d.get("stoss", ""), wps=d.get("wps", ""),
+                extra=dict(d.get("extra", {})))
         if n.status not in STATUS_ALLE:
             n.status = OFFEN
         return n
@@ -90,7 +92,8 @@ class Naht:
         if self.status == MANUELL and "manuell ergänzt" not in bem:
             bem.append("manuell ergänzt")
         return Entry(self.square, self.x, self.y, self.art, self.angabe, self.dicke, self.gruppe, bem, True,
-                     self.quelle, tuple(self.box), self.nr, self.stoss, self.wps)
+                     self.quelle, tuple(self.box), self.nr, self.stoss, self.wps,
+                     {k: v for k, v in self.extra.items() if v})
 
 
 def grid_to_dict(g):
@@ -120,6 +123,7 @@ def datei_pruefsumme(pfad):
 class Zeichnung:
     pfad: str                       # absoluter Pfad der PDF (kann nach dem Verschieben ungültig werden)
     datei: str                      # Dateiname
+    original: str = ""              # Pfad der Original-PDF, wenn die Zeichnung ins Projekt kopiert wurde
     dn: str = ""                    # Zeichnungsnummer (Spalte A)
     title: str = ""
     notes: list = field(default_factory=list)
@@ -158,7 +162,7 @@ class Zeichnung:
                 rel = os.path.relpath(self.pfad, projektordner)
             except ValueError:   # anderes Laufwerk
                 rel = None
-        return dict(pfad=self.pfad, relpfad=rel, datei=self.datei, dn=self.dn, title=self.title, notes=list(self.notes),
+        return dict(pfad=self.pfad, relpfad=rel, original=self.original, datei=self.datei, dn=self.dn, title=self.title, notes=list(self.notes),
                     ex=list(self.ex) if self.ex else None, seite=list(self.seite), grid=grid_to_dict(self.grid),
                     pruefsumme=self.pruefsumme, status=self.status, naehte=[n.to_dict() for n in self.naehte])
 
@@ -171,7 +175,7 @@ class Zeichnung:
                 if os.path.exists(kand):
                     pfad = kand
                     break
-        z = cls(pfad=pfad, datei=d.get("datei", os.path.basename(pfad)), dn=d.get("dn", ""), title=d.get("title", ""),
+        z = cls(pfad=pfad, datei=d.get("datei", os.path.basename(pfad)), original=d.get("original", ""), dn=d.get("dn", ""), title=d.get("title", ""),
                 notes=list(d.get("notes", [])), ex=tuple(d["ex"]) if d.get("ex") else None,
                 seite=tuple(d.get("seite", (0, 0))), grid=grid_from_dict(d.get("grid")),
                 pruefsumme=d.get("pruefsumme", ""), status=d.get("status", "ok"),
@@ -201,7 +205,9 @@ class Projekt:
     vorlage: str = ""
     erstellt: str = ""
     geaendert: str = ""
-    pfad: str = ""                            # Ort der Projektdatei (nicht in der Datei selbst)
+    pfad: str = ""                            # Ort der Projektdatei (nicht in der Datei selbst); leer = noch nie gespeichert
+    eingabe: str = ""                         # PDF/Ordner, aus dem das Projekt erkannt wurde
+    pdfs_kopiert: bool = False                # Zeichnungen liegen als Kopie im Projektordner
 
     def alle_naehte(self):
         return [(z, n) for z in self.zeichnungen for n in z.naehte]
@@ -218,11 +224,13 @@ class Projekt:
     def zeichnung_zu_pfad(self, pfad):
         ap = os.path.normcase(os.path.abspath(pfad))
         for z in self.zeichnungen:
-            if os.path.normcase(os.path.abspath(z.pfad)) == ap:
-                return z
+            for kand in (z.pfad, z.original):
+                if kand and os.path.normcase(os.path.abspath(kand)) == ap:
+                    return z
         return None
 
-    def speichern(self, pfad=None):
+    def speichern(self, pfad=None, merke=True):
+        """merke=False: Sicherungskopie schreiben, ohne den Speicherort des Projekts zu setzen."""
         pfad = pfad or self.pfad
         if not pfad:
             raise ValueError("kein Pfad für die Projektdatei")
@@ -231,6 +239,7 @@ class Projekt:
         self.erstellt = self.erstellt or jetzt
         self.geaendert = jetzt
         daten = dict(programm="WeldWatch", version=VERSION, basis=self.basis, vorlage=self.vorlage,
+                     eingabe=self.eingabe, pdfs_kopiert=self.pdfs_kopiert,
                      erstellt=self.erstellt, geaendert=self.geaendert,
                      zeichnungen=[z.to_dict(ordner) for z in self.zeichnungen])
         os.makedirs(ordner, exist_ok=True)
@@ -238,7 +247,8 @@ class Projekt:
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(daten, f, ensure_ascii=False, indent=1)
         os.replace(tmp, pfad)       # nie eine halb geschriebene Projektdatei hinterlassen
-        self.pfad = pfad
+        if merke:
+            self.pfad = pfad
 
     @classmethod
     def laden(cls, pfad):
@@ -250,7 +260,8 @@ class Projekt:
             raise ValueError("Projektdatei stammt aus einer neueren WeldWatch-Version.")
         ordner = os.path.dirname(os.path.abspath(pfad))
         p = cls(basis=d.get("basis", "Projekt"), vorlage=d.get("vorlage", ""), erstellt=d.get("erstellt", ""),
-                geaendert=d.get("geaendert", ""), pfad=pfad,
+                geaendert=d.get("geaendert", ""), pfad=pfad, eingabe=d.get("eingabe", ""),
+                pdfs_kopiert=bool(d.get("pdfs_kopiert", False)),
                 zeichnungen=[Zeichnung.from_dict(z, ordner) for z in d.get("zeichnungen", [])])
         return p
 
@@ -353,6 +364,9 @@ def zusammenfuehren(alt, neu):
             if best is not None and ((best.x - n.x) ** 2 + (best.y - n.y) ** 2) ** 0.5 <= MATCH_ABSTAND:
                 frei.remove(best)
                 best.id = n.id
+                best.extra = dict(n.extra)          # von Hand ausgefüllte Spalten nicht verlieren
+                if n.wps and not best.wps:
+                    best.wps = n.wps
                 ergebnis.append(best)
             else:
                 entfernt += 1
@@ -393,3 +407,88 @@ def excel_schreiben(p, vorlage, ziel, nr_in_remark=True):
     from . import output
     output.write_excel(vorlage, ziel, gruppen, nr_in_remark=nr_in_remark)
     return sum(len(g["entries"]) for g in gruppen)
+
+
+# --- Zusatzspalten, Zeichnungen ins Projekt kopieren, Prüf-PDFs ---------------------------------------------------
+
+def extras_setzen(n, werte):
+    """Weitere Excel-Spalten einer Naht setzen. Ändert den Prüfstatus nicht (reine Eingabedaten)."""
+    for k, v in werte.items():
+        v = (v or "").strip()
+        if v:
+            n.extra[k] = v
+        else:
+            n.extra.pop(k, None)
+
+
+def extra_fuer_alle(z, buchstabe, wert):
+    """Wert einer Spalte bei allen (nicht gelöschten) Nähten einer Zeichnung eintragen. Gibt die Anzahl zurück."""
+    k = 0
+    for n in z.aktive():
+        extras_setzen(n, {buchstabe: wert})
+        k += 1
+    return k
+
+
+def pdfs_kopieren(p, projektordner, unterordner="Zeichnungen"):
+    """Alle PDFs des Projekts in <Projektordner>/Zeichnungen kopieren und die Pfade darauf umstellen (Originale bleiben
+    unverändert). Gibt (kopierte Dateinamen, fehlende Dateien) zurück."""
+    import shutil
+    ziel = os.path.join(projektordner, unterordner)
+    os.makedirs(ziel, exist_ok=True)
+    belegt = {f.lower() for f in os.listdir(ziel)}
+    kopiert, fehlt = [], []
+    for z in p.zeichnungen:
+        if not os.path.exists(z.pfad):
+            fehlt.append(z.datei)
+            continue
+        if os.path.normcase(os.path.dirname(os.path.abspath(z.pfad))) == os.path.normcase(os.path.abspath(ziel)):
+            continue                                   # liegt schon im Projektordner
+        stamm, endung = os.path.splitext(os.path.basename(z.pfad))
+        name, i = stamm + endung, 2
+        while name.lower() in belegt:
+            name = f"{stamm}_{i}{endung}"
+            i += 1
+        belegt.add(name.lower())
+        ziel_pfad = os.path.join(ziel, name)
+        shutil.copy2(z.pfad, ziel_pfad)
+        z.original = z.original or z.pfad
+        z.pfad = os.path.abspath(ziel_pfad)
+        kopiert.append(name)
+    p.pdfs_kopiert = True
+    return kopiert, fehlt
+
+
+PRUEF_FARBEN = {BESTAETIGT: (0, 150, 0), GEAENDERT: (0, 137, 123), MANUELL: (142, 36, 170)}
+
+
+def pruef_auftraege(p):
+    """Daten für die Prüf-PDFs (eine PDF je Zeichnung mit nummerierten Markierungen der nicht gelöschten Nähte)."""
+    out = []
+    for z in p.zeichnungen:
+        if z.status != "ok" or not z.aktive():
+            continue
+        items = [dict(nr=n.nr, box=tuple(n.box), ok=True, farbe=PRUEF_FARBEN.get(n.status)) for n in sorted(z.aktive(), key=lambda m: m.nr)]
+        out.append(dict(datei=z.datei, pfad=z.pfad, items=items, ex=z.ex))
+    return out
+
+
+def pruef_pdfs_schreiben(auftraege, ordner, scale=1.5, fortschritt=None):
+    """Prüf-PDFs in den Ordner schreiben. Gibt (geschriebene Dateien, Fehlertexte) zurück."""
+    from . import kontroll
+    os.makedirs(ordner, exist_ok=True)
+    geschrieben, fehler = [], []
+    for i, a in enumerate(auftraege):
+        if fortschritt:
+            fortschritt(i, len(auftraege), a["datei"])
+        if not os.path.exists(a["pfad"]):
+            fehler.append(f"{a['datei']}: PDF nicht gefunden")
+            continue
+        try:
+            img = kontroll.render_overlay(a["pfad"], a["items"], a["ex"], scale=scale)
+            ziel = os.path.join(ordner, os.path.splitext(a["datei"])[0] + "_Pruefung.pdf")
+            kontroll.save_pdf(img, ziel)
+            geschrieben.append(ziel)
+        except Exception as ex:
+            fehler.append(f"{a['datei']}: {ex}")
+    return geschrieben, fehler

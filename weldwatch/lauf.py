@@ -35,10 +35,6 @@ def projektname(eingabe):
     return os.path.splitext(os.path.basename(eingabe))[0]
 
 
-def standard_projektpfad(eingabe):
-    return os.path.join(ausgabe_ordner(), projektname(eingabe) + ".wwp")
-
-
 def default_vorlage():
     return os.path.join(basis_ordner(), "vorlage", "Vorlage_Schweissnahtpruefplan.xlsx")
 
@@ -60,9 +56,10 @@ def erkennen(pfade, fortschritt=None):
     return out
 
 
-def neues_projekt(eingabe, zeichnungen, pfad=None):
-    p = Projekt(basis=projektname(eingabe), zeichnungen=zeichnungen, vorlage="", pfad=pfad or standard_projektpfad(eingabe))
-    return p
+def neues_projekt(eingabe, zeichnungen, pfad=""):
+    """Neues, noch nicht gespeichertes Projekt (pfad leer): der Speicherort wird beim ersten Speichern abgefragt."""
+    return Projekt(basis=projektname(eingabe), zeichnungen=zeichnungen, vorlage="", pfad=pfad,
+                   eingabe=os.path.abspath(eingabe))
 
 
 def einarbeiten(p, neue):
@@ -80,3 +77,53 @@ def einarbeiten(p, neue):
             hinzu, entfernt, behalten = zusammenfuehren(alt, z)
             meldungen.append(f"{z.datei}: {hinzu} neu, {entfernt} entfallen, {behalten} geprüfte/manuelle unverändert")
     return meldungen
+
+
+# --- Sicherungsdatei bis zum ersten Speichern, Merkliste "Ordner -> Projekt" ------------------------------------------
+def _sicher(name):
+    return "".join(c if c.isalnum() or c in "-_. " else "_" for c in name).strip() or "Projekt"
+
+
+def sicherung_pfad(basis):
+    """Automatische Sicherung eines noch nie gespeicherten Projekts (wird beim ersten Speichern entfernt)."""
+    return os.path.join(ausgabe_ordner(), "_Sicherung", _sicher(basis) + ".wwp")
+
+
+def _merkliste_pfad():
+    return os.path.join(ausgabe_ordner(), "projekte.json")
+
+
+def _schluessel(eingabe):
+    return os.path.normcase(os.path.abspath(eingabe))
+
+
+def merke_projekt(eingabe, projektpfad):
+    """Merken, wo das Projekt zu diesem PDF/Ordner gespeichert wurde (damit es beim nächsten Mal ohne neuen Lauf geöffnet werden kann)."""
+    if not eingabe:
+        return
+    import json
+    try:
+        try:
+            with open(_merkliste_pfad(), encoding="utf-8") as f:
+                m = json.load(f)
+        except (OSError, ValueError):
+            m = {}
+        m[_schluessel(eingabe)] = os.path.abspath(projektpfad)
+        with open(_merkliste_pfad(), "w", encoding="utf-8") as f:
+            json.dump(m, f, ensure_ascii=False, indent=1)
+    except OSError:
+        pass
+
+
+def finde_projekt(eingabe, basis=None):
+    """Vorhandenes Projekt zu diesem PDF/Ordner: gespeichertes (Merkliste) oder noch nicht gespeicherte Sicherung; sonst None."""
+    import json
+    try:
+        with open(_merkliste_pfad(), encoding="utf-8") as f:
+            pfad = json.load(f).get(_schluessel(eingabe))
+        if pfad and os.path.exists(pfad):
+            return pfad
+    except (OSError, ValueError):
+        pass
+    s = sicherung_pfad(basis or projektname(eingabe))
+    return s if os.path.exists(s) else None

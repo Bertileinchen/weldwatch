@@ -18,6 +18,7 @@ class Entry:
     nr: int = 0
     stoss: str = ""      # Zusatz unter der Nahtart (T-Stoß), nie bei Kehlnähten
     wps: str = ""        # Zusatzinfo (Winkelangabe) für die manuelle WPS-Auswahl
+    extra: dict = field(default_factory=dict)   # Spaltenbuchstabe -> Text (weitere Spalten der Excel-Vorlage, von Hand ausgefüllt)
 
 def _side_text(kind, d):
     size = d.get("size", "")

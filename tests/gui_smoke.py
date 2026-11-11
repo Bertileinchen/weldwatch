@@ -6,6 +6,7 @@ import openpyxl
 from PIL import Image, ImageDraw
 from weldwatch import gui, lauf, projekt as P
 from tests.test_projekt import beispiel_zeichnung
+from tests.test_speichern import vorlage_machen
 
 FALSCH = []
 
@@ -38,11 +39,20 @@ def main():
         img.save(pdf, "PDF", resolution=72)
         z.seite = (1200.0, 1200.0)
         vorlage = os.path.join(d, "vorlage.xlsx")
-        wb = openpyxl.Workbook(); wb.active.title = "SNP"
-        for c in range(1, 16):
-            wb.active.cell(7, c).value = "Muster"
-        wb.save(vorlage)
-        p = P.Projekt(basis="Rauchtest", zeichnungen=[z], pfad=os.path.join(d, "t.wwp"), vorlage=vorlage)
+        vorlage_machen(vorlage)
+        os.makedirs(os.path.join(d, "proj"))
+        ziel = os.path.join(d, "proj", "out.xlsx")
+        speicher_ziel = os.path.join(d, "proj", "t.wwp")
+        dialoge = []
+
+        def save_dialog(*a, **k):
+            if k.get("defaultextension") == ".xlsx":
+                return ziel
+            dialoge.append(1)
+            return speicher_ziel
+        gui.filedialog.asksaveasfilename = save_dialog
+        gui.filedialog.askopenfilename = lambda *a, **k: vorlage
+        p = P.Projekt(basis="Rauchtest", zeichnungen=[z], pfad="", vorlage=vorlage, eingabe=pdf)
 
         root = gui.neues_fenster()
         app = gui.App(root)
@@ -83,9 +93,10 @@ def main():
                "Änderung wird beim Wechsel übernommen (geändert)")
 
         # Excel erst nach vollständiger Prüfung
-        ziel = os.path.join(d, "out.xlsx")
-        gui.filedialog.asksaveasfilename = lambda *a, **k: ziel
-        gui.filedialog.askopenfilename = lambda *a, **k: vorlage
+        pruefe(p.pfad == "" and os.path.exists(lauf.sicherung_pfad("Rauchtest")),
+               "vor dem ersten Speichern gibt es nur eine Sicherungsdatei")
+        pruefe(len(app.extra_vars) >= 6 and "G" not in app.extra_vars and "I" in app.extra_vars,
+               "Eingabefelder für die weiteren Excel-Spalten (ohne WPS-Spalte)")
         meldungen.clear()
         app.excel_exportieren()
         pruefe(not os.path.exists(ziel) and any(m[0] == "warn" for m in meldungen), "Excel wird bei offenen Nähten verweigert")
@@ -119,19 +130,63 @@ def main():
         app.var_geloescht.set(False)
         app.waehle(geloescht[0].id); app.naht_bestaetigen()
 
-        # Speichern/Laden
+        # Erstes Speichern: Dialog, PDFs ins Projekt, danach nur noch überspeichern
         app.speichern()
+        pruefe(len(dialoge) == 1 and p.pfad == speicher_ziel and os.path.exists(speicher_ziel), "erstes Speichern fragt nach dem Speicherort")
+        pruefe(p.pdfs_kopiert and z.pfad.startswith(os.path.join(d, "proj", "Zeichnungen")) and os.path.exists(z.pfad),
+               "Zeichnung wurde ins Projekt kopiert")
+        pruefe(not os.path.exists(lauf.sicherung_pfad("Rauchtest")), "Sicherungsdatei entfernt")
+        pruefe(app.seite is not None, "PDF nach dem Kopieren wieder geöffnet")
+        pruefe(lauf.finde_projekt(pdf) == speicher_ziel, "Speicherort ist für den nächsten Start gemerkt")
+        app.speichern()
+        pruefe(len(dialoge) == 1, "zweites Speichern ohne Dialog")
         q = P.Projekt.laden(p.pfad)
         pruefe([n.to_dict() for n in q.zeichnungen[0].naehte] == [n.to_dict() for n in z.naehte], "Projektdatei enthält den Prüfstand")
+
+        # weitere Excel-Spalten: ändern den Status nicht, "alle" füllt die Zeichnung
+        erste = min(z.aktive(), key=lambda m: m.nr)
+        app.waehle(erste.id)
+        status_vorher = erste.status
+        app.extra_vars["I"].set("WPQR-7"); app.extra_vars["L"].set("100 % VT")
+        app.waehle(z.aktive()[-1].id)
+        pruefe(erste.extra == {"I": "WPQR-7", "L": "100 % VT"} and erste.status == status_vorher,
+               "weitere Spalten übernommen, Status unverändert")
+        app.extra_vars["J"].set("AP-1"); app.extra_fuer_alle("J")
+        pruefe(all(n.extra.get("J") == "AP-1" for n in z.aktive()), "'→ alle' trägt bei allen Nähten ein")
+        app.waehle(erste.id)
+        pruefe(app.extra_vars["I"].get() == "WPQR-7" and app.extra_vars["J"].get() == "AP-1", "Felder zeigen die gespeicherten Werte")
 
         # Excel jetzt
         pruefe(p.vollstaendig_geprueft(), "alles geprüft")
         meldungen.clear()
         app.excel_exportieren()
-        pruefe(os.path.exists(ziel), "Excel-Datei erstellt")
+        pruefe(os.path.exists(ziel), "Excel-Datei erstellt (im Projektordner)")
         ws = openpyxl.load_workbook(ziel)["SNP"]
         pruefe(ws.cell(7, 1).value == "PF60.100" and ws.cell(10, 1).value is not None and ws.cell(11, 1).value is None,
                "Excel enthält 4 Nähte")
+        pruefe(ws["I7"].value == "WPQR-7" and ws["L7"].value == "100 % VT" and ws["J7"].value == "AP-1" and ws["J10"].value == "AP-1",
+               "weitere Spalten stehen in der Excel-Datei")
+        t0 = time.time()
+        while app.busy and time.time() - t0 < 120:
+            root.update(); time.sleep(0.1)
+        pdf_ordner = os.path.join(d, "proj", "out_Pruef-PDFs")
+        pruefe(not app.busy and os.path.isfile(os.path.join(pdf_ordner, "zeichnung_Pruefung.pdf")), "Prüf-PDFs im Unterordner exportiert")
+
+        # Zeichnung umschalten, auch wenn die aktuelle nicht fertig ist
+        pdf2 = os.path.join(d, "zweite.pdf")
+        Image.new("RGB", (1200, 1200), "white").save(pdf2, "PDF", resolution=72)
+        z2 = beispiel_zeichnung(pdf2)
+        p.zeichnungen.append(z2)
+        app._combo_aktualisieren()
+        pruefe(len(app.tab_btns) == 2, "Reiter für beide Zeichnungen")
+        app.zeichnung_weiter(1)
+        pruefe(app.z is z2 and app.sel is not None, "weiter zur nächsten Zeichnung")
+        app.zeichnung_weiter(1)
+        pruefe(app.z is z, "wieder zurück (Umlauf), obwohl die zweite nicht fertig war")
+        app.zeichnung_nr(1); app.zeichnung_weiter(-1)
+        pruefe(app.z is z, "Umschalten per Nummer und rückwärts")
+        p.zeichnungen.remove(z2)
+        app._combo_aktualisieren()
 
         # Erkennungslauf im Hintergrund (Rasterbild ohne Nähte) und Wiedereinlesen ohne Verlust
         vorher = [(n.id, n.status) for n in z.naehte]
@@ -143,7 +198,17 @@ def main():
         pruefe(p.zeichnungen[0].status == "ok", "Neulauf liefert Ergebnis")
         pruefe(sorted(vorher) == sorted((n.id, n.status) for n in p.zeichnungen[0].naehte),
                "Neulauf ändert weder Prüfstatus noch Nähte (geprüfte/manuelle bleiben)")
+        # Beenden: ungespeichertes Projekt fragt nach
+        ende = []
+        orig = root.destroy
+        root.destroy = lambda: (ende.append(1), orig())
+        p.pfad = ""
+        gui.messagebox.askyesnocancel = lambda *a, **k: None
         app.beenden()
+        pruefe(not ende, "Abbrechen beim Beenden lässt das Fenster offen")
+        gui.messagebox.askyesnocancel = lambda *a, **k: False
+        app.beenden()
+        pruefe(ende, "Beenden ohne Speichern")
     print("\nFehler:", len(FALSCH))
     return 1 if FALSCH else 0
 

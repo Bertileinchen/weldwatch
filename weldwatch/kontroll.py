@@ -23,7 +23,7 @@ def render_overlay(pdf_path, items, exclude_rect, scale=2.0, page_index=0):
         d.text((x0 + 6, y0 + 4), "ignoriert (allgemeine Angaben)", fill=(60, 60, 60, 255), font=fnt)
     for it in items:
         x0, y0, x1, y1 = [v * scale for v in it["box"]]
-        col = (0, 170, 0) if it["ok"] else (255, 140, 0)
+        col = tuple(it["farbe"]) if it.get("farbe") else ((0, 170, 0) if it["ok"] else (255, 140, 0))
         d.rectangle([x0 - 4, y0 - 4, x1 + 4, y1 + 4], outline=col + (255,), width=max(2, int(1.5 * scale)))
         label = str(it["nr"])
         tw = d.textlength(label, font=fnt)

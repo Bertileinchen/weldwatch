@@ -2,6 +2,7 @@
 import copy, datetime, re
 import openpyxl
 from openpyxl.styles import Font, Alignment
+from openpyxl.utils import get_column_letter
 
 FIRST = 7
 
@@ -13,6 +14,41 @@ def wps_spalte(ws):
             if isinstance(v, str) and re.search(r"\bWPS\b", v, re.I):
                 return c
     return None
+
+# Spalten, die das Programm selbst aus der Erkennung füllt; alle übrigen Spalten (F, G, I-N) sind von Hand auszufüllen
+ERKANNTE_SPALTEN = ("A", "B", "C", "D", "E", "H", "O")
+
+
+def vorlage_spalten(template):
+    """Kopfzeilen-Texte der Vorlage je Spalte (A-O) und die WPS-Spalte: (dict Buchstabe -> Text, WPS-Buchstabe oder None).
+    Der Text stammt aus der Kopfzeile direkt über den Datenzeilen (verbundene Zellen werden berücksichtigt)."""
+    from openpyxl.utils import get_column_letter
+    wb = openpyxl.load_workbook(template)
+    ws = wb["SNP"] if "SNP" in wb.sheetnames else wb.active
+    merged = list(ws.merged_cells.ranges)
+    labels = {}
+    for c in range(1, 16):
+        buchstabe = get_column_letter(c)
+        text = ""
+        for r in range(FIRST - 1, max(FIRST - 4, 0), -1):
+            v = ws.cell(r, c).value
+            if not (isinstance(v, str) and v.strip()):
+                for m in merged:
+                    if m.min_row <= r <= m.max_row and m.min_col <= c <= m.max_col:
+                        v = ws.cell(m.min_row, m.min_col).value
+                        break
+            if isinstance(v, str) and v.strip():
+                text = " ".join(v.split())
+                break
+        labels[buchstabe] = text or f"Spalte {buchstabe}"
+    wc = wps_spalte(ws)
+    return labels, (get_column_letter(wc) if wc else None)
+
+
+def zusatz_spalten(labels, wps_buchstabe):
+    """[(Buchstabe, Überschrift)] der Spalten, die von Hand ausgefüllt werden (ohne erkannte Spalten und ohne WPS-Spalte)."""
+    return [(b, t) for b, t in labels.items() if b not in ERKANNTE_SPALTEN and b != wps_buchstabe]
+
 
 def write_excel(template, out_path, groups, nr_in_remark=True):
     """groups: Liste von dict(dn, title, source, entries, notes) - eine Zeichnung je Eintrag, alle Nähte in EINER Liste."""
@@ -55,6 +91,12 @@ def write_excel(template, out_path, groups, nr_in_remark=True):
         if wps_col and e.wps:
             ws.cell(r, wps_col).value = e.wps
         ws.cell(r, 15).value = "; ".join(e.bemerkung) or None
+        for buchstabe, wert in (getattr(e, "extra", None) or {}).items():
+            if wert and buchstabe not in ERKANNTE_SPALTEN and buchstabe != (get_column_letter(wps_col) if wps_col else None):
+                zelle = ws[f"{buchstabe}{r}"]
+                zelle.value = wert
+                al = copy.copy(zelle.alignment); al.wrap_text = True
+                zelle.alignment = al
     # Protokoll
     wp = wb.create_sheet("Protokoll")
     wp.append(["Zeichnungen", len(groups)]); wp.append(["Erkannte Nähte", len(entries_all)])
