@@ -71,14 +71,14 @@ Alle angezeigten bestätigen
     ("Blechstärken", """Blechstärken beider Nahtpartner ("5mm / 10mm")
   1. Datei > STP-Datei laden: die 3D-Datei der Baugruppe (Teile und Dicke werden daraus berechnet).
   2. Datei > Stücklisten (PDF) laden (oder Ordner mit Stücklisten): ordnet die Positionen der Zeichnung den Teilen zu.
-  3. Im Reiter "Naht" bei "Blech: Teil A" und "Teil B" die zwei Teile der Naht wählen (Tippen filtert die Liste).
+  3. Im Reiter "Naht" bei "Blech (Sp. D)" Teil A und Teil B die zwei Teile der Naht wählen (Tippen filtert die Liste).
      Die Dicke wird vorgeschlagen und kann überschrieben werden. "(?)" = Wert unsicher, bitte prüfen.
   4. "Teile wie vorige Naht" übernimmt die letzte Auswahl.
   Ohne STP gibt es keine Vorschläge: Dicke A und B von Hand eintragen.
 
 Die Dicke stammt aus dem 3D-Modell (Abstand großer paralleler Flächen, bei Rundrohren Außen- minus Innenradius), nicht aus der
-Stückliste. Blechstärken ändern den Prüfstatus der Naht nicht. Die Excel-Spalte wird über ihre Überschrift in der Vorlage gefunden
-(Blech, Dicke oder Stärke; Spalte D = Nahtdicke bleibt unverändert). Fehlen Blechstärken, fragt das Programm vor dem Excel-Export."""),
+Stückliste. Blechstärken ändern den Prüfstatus der Naht nicht. Sie stehen in Spalte D der Excel-Liste (das Nahtmaß wie s20 oder a5
+steht schon in der Zeichnungsangabe). Fehlen Blechstärken, fragt das Programm vor dem Excel-Export."""),
     ("Zeichnungen und Filter", """Mehrere Zeichnungen
   Umschalten: Auswahlliste oben, Reiter (bis 8 Zeichnungen), Knöpfe "◀ Zeichnung / Zeichnung ▶" oder Strg+Bild auf / Bild ab.
   Die vorige Zeichnung muss nicht fertig sein.
@@ -379,7 +379,7 @@ class App:
         self.extra_tab = ttk.Frame(self.nb, padding=6)
         self.extra_tab.columnconfigure(1, weight=1)
         self.nb.add(self.extra_tab, text="Prüfangaben")
-        self.v = {k: tk.StringVar() for k in ("square", "art", "stoss", "dicke", "gruppe", "wps", "bem",
+        self.v = {k: tk.StringVar() for k in ("square", "art", "stoss", "gruppe", "wps", "bem",
                                               "teil_a", "teil_b", "dicke_a", "dicke_b", "blech")}
         self._wahl_map, self._wahl_key_map, self._wahl_labels, self._letzte_blech = {}, {}, [], None
         self.f_widgets = []
@@ -398,10 +398,9 @@ class App:
         self.e_square = feld("Planquadrat", ttk.Entry(form, textvariable=self.v["square"], width=8))
         self.c_art = feld("Nahtart", ttk.Combobox(form, textvariable=self.v["art"], values=ARTEN))
         self.c_stoss = feld("Zusatz Nahtart", ttk.Combobox(form, textvariable=self.v["stoss"], values=["", "T-Stoß"]))
-        self.e_dicke = feld("Dicke (Sp. D)", ttk.Entry(form, textvariable=self.v["dicke"], width=8))
-        self.c_teil_a = feld("Blech: Teil A", ttk.Combobox(form, textvariable=self.v["teil_a"], values=[]))
+        self.c_teil_a = feld("Blech (Sp. D)\nTeil A", ttk.Combobox(form, textvariable=self.v["teil_a"], values=[]))
         self.e_dicke_a = feld("Dicke A (mm)", ttk.Entry(form, textvariable=self.v["dicke_a"], width=8))
-        self.c_teil_b = feld("Blech: Teil B", ttk.Combobox(form, textvariable=self.v["teil_b"], values=[]))
+        self.c_teil_b = feld("Blech (Sp. D)\nTeil B", ttk.Combobox(form, textvariable=self.v["teil_b"], values=[]))
         self.e_dicke_b = feld("Dicke B (mm)", ttk.Entry(form, textvariable=self.v["dicke_b"], width=8))
         for k in ("dicke_a", "dicke_b"):
             self.v[k].trace_add("write", lambda *a: self._blech_anzeigen())
@@ -421,7 +420,7 @@ class App:
         self.e_bem = feld("Bemerkung\n(mit ; trennen)", ttk.Entry(form, textvariable=self.v["bem"]))
         self.lbl_quelle = ttk.Label(form, text="", foreground="#555555", wraplength=330, justify="left")
         self.lbl_quelle.grid(row=zeile, column=0, columnspan=2, sticky="w", pady=(4, 0))
-        for w in (self.e_square, self.c_art, self.c_stoss, self.e_dicke, self.c_gruppe, self.e_wps, self.e_bem):
+        for w in (self.e_square, self.c_art, self.c_stoss, self.c_gruppe, self.e_wps, self.e_bem):
             w.bind("<Return>", lambda e: (self.naht_bestaetigen(), "break")[1])
         self.t_angabe.bind("<Control-Return>", lambda e: (self.naht_bestaetigen(), "break")[1])
 
@@ -1026,7 +1025,6 @@ class App:
         self.v["square"].set(n.square)
         self.v["art"].set(n.art)
         self.v["stoss"].set(n.stoss)
-        self.v["dicke"].set(n.dicke)
         self.t_angabe.insert("1.0", n.angabe)
         self.v["gruppe"].set(n.gruppe)
         self.v["wps"].set(n.wps)
@@ -1058,7 +1056,7 @@ class App:
 
     def _form_werte(self):
         return dict(square=self.v["square"].get().strip(), art=self.v["art"].get().strip(), stoss=self.v["stoss"].get().strip(),
-                    dicke=self.v["dicke"].get().strip(), angabe=self.t_angabe.get("1.0", "end-1c").strip(),
+                    angabe=self.t_angabe.get("1.0", "end-1c").strip(),
                     gruppe=self.v["gruppe"].get().strip(), wps=self.v["wps"].get().strip(), bem=self.v["bem"].get().strip(),
                     teil_a=self._wahl_key(self.v["teil_a"].get()), teil_b=self._wahl_key(self.v["teil_b"].get()),
                     dicke_a=self.v["dicke_a"].get().strip(), dicke_b=self.v["dicke_b"].get().strip(),
@@ -1083,9 +1081,9 @@ class App:
                         f"'{w['gruppe']}' passt nicht zum Schema (Gr.1-11, Gr.21-26 nur als Gr.22/23, Mischverbindung 'Gr.1 + Gr.8').\n\n"
                         "Trotzdem übernehmen?", parent=self.root):
                     return False
-        erkannt = ("square", "art", "stoss", "dicke", "angabe", "gruppe", "bem")
+        erkannt = ("square", "art", "stoss", "angabe", "gruppe", "bem")
         if bestaetigen or any(w[k] != self._snap[k] for k in erkannt):
-            P.aendern(self.z, n, square=w["square"] or n.square, art=w["art"], stoss=w["stoss"], dicke=w["dicke"],
+            P.aendern(self.z, n, square=w["square"] or n.square, art=w["art"], stoss=w["stoss"],
                       angabe=w["angabe"], gruppe=w["gruppe"], bemerkung=w["bem"])
         # WPS und weitere Excel-Spalten sind reine Eingabedaten: ändern den Prüfstatus nicht
         n.wps = w["wps"]
