@@ -11,7 +11,7 @@ from tkinter import ttk, filedialog, messagebox
 
 from PIL import ImageTk
 
-from . import __version__, lauf, output, pruefklassen
+from . import __version__, abbruch, lauf, output, pruefklassen
 from .changelog import CHANGELOG
 from . import projekt as P
 from .pdfansicht import Ansicht, PdfSeite
@@ -39,7 +39,7 @@ HILFE_SEITEN = [
     ("Überblick", """Ablauf in Kürze
   1. PDF, Ordner oder Projektdatei (.wwp) öffnen oder ins Fenster ziehen - die Erkennung läuft im Hintergrund.
   2. Jede Naht prüfen: anklicken, Daten kontrollieren/ändern, bestätigen.
-  3. Weitere Excel-Spalten ausfüllen (WPS, WPQR, Güte-/Prüfklasse ...).
+  3. Prüfangaben ausfüllen (WPS, WPQR, Güte-/Prüfklasse ...).
   4. Excel-Prüfplan erstellen (erst möglich, wenn keine Naht mehr offen ist), optional mit Prüf-PDFs.
 
 Die Ergebnisse der Erkennung sind Vorschläge zur Prüfung durch eine Person.
@@ -77,9 +77,9 @@ Alle angezeigten bestätigen
 Nahtliste filtern
   Über der Liste gibt es je Spalte eine Auswahl (wie beim Excel-Filter): Quadrat, Nahtart, Angabe, Gruppe, Status.
   "nur offene" zeigt nur noch zu prüfende Nähte. "Filter löschen" setzt alle Filter zurück.
-  Die Knöpfe "→ alle" (Weitere Excel-Spalten) und "Alle angezeigten bestätigen" wirken NUR auf die angezeigten Nähte.
+  Die Knöpfe "→ alle" (Reiter Prüfangaben) und "Alle angezeigten bestätigen" wirken NUR auf die angezeigten Nähte.
   Beispiel: Nahtart "Kehlnaht" und Angabe "a5" einstellen, WPQR eintragen, "→ alle" - gilt nur für diese Nähte."""),
-    ("Excel-Spalten", """Reiter "Weitere Excel-Spalten"
+    ("Prüfangaben", """Reiter "Prüfangaben"
   Für jede nicht erkannte Spalte der Vorlage gibt es ein Feld (Überschrift aus der Vorlage). Die Werte kommen unverändert in die
   Excel-Liste und ändern den Prüfstatus nicht. WPS steht im Reiter "Naht" (vorbelegt mit "Auswahlhilfe: ..." aus der Winkelangabe).
 
@@ -99,8 +99,12 @@ Excel-Prüfplan
   Datei > Excel-Prüfplan erstellen. Der Vorschlag liegt im Projektordner. Danach fragt das Programm "Prüf-PDFs mit exportieren?":
   je Zeichnung eine PDF mit nummerierten Markierungen im Unterordner "<Excelname>_Pruef-PDFs".
 
-Erneute Erkennung
-  Ansicht > Erkennung dieser Zeichnung wiederholen: geprüfte, geänderte, gelöschte und selbst gesetzte Nähte bleiben erhalten."""),
+Scan
+  Neue Zeichnungen werden nur aufgenommen, der Scan startet nicht von selbst. Zwei Knöpfe in der Zeichnungsleiste:
+  "Scan: aktuelle Zeichnung" und "Scan: alle Zeichnungen" (auch im Menü Ansicht). Der Scan läuft im Hintergrund,
+  mit "Abbrechen" (unten rechts) lässt er sich stoppen; bereits fertige Zeichnungen bleiben erhalten.
+  Ein erneuter Scan behält geprüfte, geänderte, gelöschte und selbst gesetzte Nähte.
+  Excel gibt es erst, wenn alle Zeichnungen gescannt und alle Nähte geprüft sind."""),
     ("Tastenkürzel", """Strg+S              speichern
 Strg+Enter          bestätigen und weiter
 Enter (Liste)       bestätigen und weiter
@@ -162,6 +166,8 @@ class App:
         self._erst_fit = True
         self._lauf_ziel = None
         self._lauf_eingabe = None
+        self._scan_bleibe = None
+        self._scan_pfade = []
         self._lauf_t0 = 0.0
         self._lauf_text = ""
         self._job_danach = None
@@ -224,7 +230,8 @@ class App:
         a.add_command(label="Vorherige Zeichnung", accelerator="Strg+Bild auf", command=lambda: self.zeichnung_weiter(-1))
         a.add_command(label="Nächste Zeichnung", accelerator="Strg+Bild ab", command=lambda: self.zeichnung_weiter(1))
         a.add_separator()
-        a.add_command(label="Erkennung dieser Zeichnung wiederholen (Prüfung bleibt erhalten)", command=self.erkennung_wiederholen)
+        a.add_command(label="Scan: aktuelle Zeichnung (Prüfung bleibt erhalten)", command=self.scan_aktuelle)
+        a.add_command(label="Scan: alle Zeichnungen", command=self.scan_alle)
         m.add_cascade(label="Ansicht", menu=a)
         h = tk.Menu(m, tearoff=0)
         h.add_command(label="Bedienung und Farben", command=self.hilfe_zeigen)
@@ -252,13 +259,15 @@ class App:
         zb.pack(side="top", fill="x")
         ttk.Label(zb, text="Zeichnung:").pack(side="left")
         ttk.Button(zb, text="◀", width=3, command=lambda: self.zeichnung_weiter(-1)).pack(side="left", padx=(4, 0))
-        self.cb_zeichnung = ttk.Combobox(zb, textvariable=self.var_zeichnung, state="readonly", width=56)
+        self.cb_zeichnung = ttk.Combobox(zb, textvariable=self.var_zeichnung, state="readonly", width=44)
         self.cb_zeichnung.pack(side="left", padx=2)
         self.cb_zeichnung.bind("<<ComboboxSelected>>", self._zeichnung_gewaehlt)
         ttk.Button(zb, text="▶", width=3, command=lambda: self.zeichnung_weiter(1)).pack(side="left")
         ttk.Button(zb, text="+ Zeichnung hinzufügen", command=self.zeichnungen_hinzufuegen).pack(side="left", padx=(14, 0))
         ttk.Button(zb, text="+ Ordner", command=self.ordner_hinzufuegen).pack(side="left", padx=2)
         ttk.Button(zb, text="- Zeichnung entfernen", command=self.zeichnung_entfernen).pack(side="left", padx=2)
+        ttk.Button(zb, text="Scan: aktuelle Zeichnung", command=self.scan_aktuelle).pack(side="left", padx=(14, 0))
+        ttk.Button(zb, text="Scan: alle Zeichnungen", command=self.scan_alle).pack(side="left", padx=2)
 
         self.tabs = ttk.Frame(self.root, padding=(6, 0))
         self.tabs.pack(side="top", fill="x")
@@ -269,6 +278,9 @@ class App:
         ttk.Label(sb, textvariable=self.var_status).pack(side="left")
         ttk.Label(sb, text=f"Version {__version__}", foreground="#555555").pack(side="right", padx=(10, 0))
         self.progress.pack(side="right")
+        self.btn_abbruch = ttk.Button(sb, text="Abbrechen", command=self.abbrechen)
+        self.btn_abbruch.pack(side="right", padx=6)
+        self.btn_abbruch.state(["disabled"])
 
         pw = ttk.PanedWindow(self.root, orient="horizontal")
         pw.pack(side="top", fill="both", expand=True)
@@ -351,7 +363,7 @@ class App:
         self.nb.add(form, text="Naht")
         self.extra_tab = ttk.Frame(self.nb, padding=6)
         self.extra_tab.columnconfigure(1, weight=1)
-        self.nb.add(self.extra_tab, text="Weitere Excel-Spalten")
+        self.nb.add(self.extra_tab, text="Prüfangaben")
         self.v = {k: tk.StringVar() for k in ("square", "art", "stoss", "dicke", "gruppe", "wps", "bem")}
         self.f_widgets = []
         zeile = 0
@@ -576,21 +588,22 @@ class App:
         self._status(f"{len(ziel)} Nähte bestätigt.")
 
     # ------------------------------------------------------------------------------------------------ Projekt
-    def projekt_setzen(self, p):
+    def projekt_setzen(self, p, bleibe=None):
         self.p = p
         self.sel = None
         arten = sorted({n.art for z in p.zeichnungen for n in z.naehte if n.art} - set(ARTEN))
         self.c_art.configure(values=ARTEN + arten)
         self._extras_aufbauen()
         self._pruefe_pdfs()
-        erste = next((z for z in p.zeichnungen if z.offene()), p.zeichnungen[0] if p.zeichnungen else None)
+        erste = bleibe if bleibe in p.zeichnungen else \
+            next((z for z in p.zeichnungen if z.offene() or not z.erkannt), p.zeichnungen[0] if p.zeichnungen else None)
         self._zeichnung_wechseln(erste)
         self._titel()
         self.root.update_idletasks()
         n = self._naechste_offene_naht()
         if n is not None:
             self.waehle(n[1].id, zeichnung=n[0], zentrieren=True)
-        self._status("Projekt geladen.")
+        self._status("Projekt geladen." + (f" {len(p.ungescannt())} Zeichnung(en) noch nicht gescannt." if p.ungescannt() else ""))
 
     def _pruefe_pdfs(self):
         fehlt, geaendert = [], []
@@ -605,7 +618,7 @@ class App:
             messagebox.showwarning(
                 "Zeichnung geändert",
                 "Diese PDF-Dateien wurden seit der Erkennung verändert:\n  " + "\n  ".join(geaendert) +
-                "\n\nMarkierungen können dann falsch liegen. Mit Ansicht > 'Erkennung dieser Zeichnung wiederholen' "
+                "\n\nMarkierungen können dann falsch liegen. Mit 'Scan: aktuelle Zeichnung' "
                 "wird neu erkannt; geprüfte und von Hand gesetzte Nähte bleiben erhalten.", parent=self.root)
 
     def _titel(self):
@@ -654,6 +667,10 @@ class App:
         if z is None:
             self.lbl_info.config(text="")
             return
+        if not z.erkannt:
+            self.lbl_info.config(text="Noch nicht gescannt: 'Scan: aktuelle Zeichnung' oder 'Scan: alle Zeichnungen' drücken.",
+                                 foreground="#b25b00")
+            return
         teile = []
         if z.status != "ok":
             teile.append(f"Erkennung: {z.status}")
@@ -666,14 +683,19 @@ class App:
             self.var_zeichnung.set("")
             self._tabs_aktualisieren()
             return
-        texte = [f"{z.datei}  ({len(z.aktive())} Nähte, {len(z.offene())} offen)" for z in self.p.zeichnungen]
+        texte = [f"{z.datei}  (nicht gescannt)" if not z.erkannt else f"{z.datei}  ({len(z.aktive())} Nähte, {len(z.offene())} offen)"
+                 for z in self.p.zeichnungen]
         self.cb_zeichnung.configure(values=texte)
         if self.z in self.p.zeichnungen:
             self.var_zeichnung.set(texte[self.p.zeichnungen.index(self.z)])
             self.var_zi.set(self.p.zeichnungen.index(self.z))
         self._tabs_aktualisieren()
         offen = self.p.anzahl_offen()
-        self.lbl_offen.config(text=f"offen: {offen} von {self.p.anzahl_aktiv()}", foreground="#b25b00" if offen else "#2e7d32")
+        ungescannt = len(self.p.ungescannt())
+        text = f"offen: {offen} von {self.p.anzahl_aktiv()}"
+        if ungescannt:
+            text += f"  |  {ungescannt} Zeichnung(en) nicht gescannt"
+        self.lbl_offen.config(text=text, foreground="#b25b00" if (offen or ungescannt) else "#2e7d32")
 
     def _tabs_aktualisieren(self):
         """Reiterleiste mit allen Zeichnungen (bis 8 Stück) zum direkten Umschalten, mit Anzahl offener Nähte."""
@@ -695,7 +717,7 @@ class App:
         for i, (b, z) in enumerate(zip(self.tab_btns, zs)):
             o = len(z.offene())
             name = z.datei if len(z.datei) <= 26 else z.datei[:23] + "..."
-            b.config(text=f"{i + 1}. {name}  " + (f"({o} offen)" if o else "✓"))
+            b.config(text=f"{i + 1}. {name}  " + ("(nicht gescannt)" if not z.erkannt else f"({o} offen)" if o else "✓"))
 
     def zeichnung_nr(self, i):
         """Zur Zeichnung Nr. i (0-basiert) wechseln - ohne Bedingung, die vorige muss nicht fertig sein."""
@@ -1322,31 +1344,43 @@ class App:
         self.projekt_setzen(p)
 
     def neu_aus_pfad(self, pfad):
+        """PDF oder Ordner öffnen: Zeichnungen werden nur aufgenommen, der Scan startet erst auf Knopfdruck."""
         pdfs = lauf.pdfs_in(pfad)
         if not pdfs:
             messagebox.showinfo("Keine PDF", "Im Ordner liegen keine PDF-Dateien.", parent=self.root)
             return
         ziel = lauf.finde_projekt(pfad)
-        if ziel:
-            a = messagebox.askyesnocancel(
-                "Projekt vorhanden",
-                f"Für '{lauf.projektname(pfad)}' gibt es schon ein Projekt:\n{ziel}\n\n"
-                "Ja = vorhandenes Projekt öffnen (kein neuer Lauf)\n"
-                "Nein = Erkennung neu durchführen (geprüfte und von Hand gesetzte Nähte bleiben erhalten)\n"
-                "Abbrechen = nichts tun", parent=self.root)
-            if a is None:
-                return
-            if a:
-                self.projekt_oeffnen(ziel)
-                return
+        if ziel:                      # vorhandenes Projekt öffnen, neue PDFs ergänzen
+            self.projekt_oeffnen(ziel)
+            if self.p is not None:
+                neu = self._zeichnungen_aufnehmen(pdfs)
+                if neu:
+                    self._nach_aufnahme(neu)
+            return
+        p = lauf.neues_projekt(pfad, [lauf.leere_zeichnung(f) for f in pdfs])
+        self._sichern(p)
+        self.projekt_setzen(p)
+
+    def _zeichnungen_aufnehmen(self, pdfs):
+        """Neue Zeichnungen ohne Scan ins Projekt aufnehmen (schon enthaltene werden übersprungen)."""
+        neu = []
+        for f in pdfs:
+            if self.p.zeichnung_zu_pfad(f) is None:
+                z = lauf.leere_zeichnung(f)
+                self.p.zeichnungen.append(z)
+                neu.append(z)
+        if neu and self.p.pfad and self.p.pdfs_kopiert:
             try:
-                p = self._laden(ziel)
-            except Exception as ex:
-                messagebox.showerror("Projekt öffnen", f"Vorhandenes Projekt nicht lesbar:\n{ex}", parent=self.root)
-                return
-            self._starte_lauf(pdfs, ziel_projekt=p)
-        else:
-            self._starte_lauf(pdfs, eingabe=pfad)
+                P.pdfs_kopieren(self.p, os.path.dirname(os.path.abspath(self.p.pfad)))
+            except OSError as ex:
+                self._status(f"Zeichnung konnte nicht ins Projekt kopiert werden: {ex}")
+        return neu
+
+    def _nach_aufnahme(self, neu):
+        self._sichern()
+        self.zeichnung_nr(self.p.zeichnungen.index(neu[0]))
+        self._combo_aktualisieren()
+        self._status(f"{len(neu)} Zeichnung(en) hinzugefügt - noch nicht gescannt (Knopf 'Scan: ...').")
 
     def zeichnungen_hinzufuegen(self):
         if self.busy:
@@ -1356,7 +1390,11 @@ class App:
         dateien = filedialog.askopenfilenames(parent=self.root, title="Zeichnungen hinzufügen", filetypes=[("PDF", "*.pdf")])
         if dateien:
             self._form_anwenden(False)
-            self._starte_lauf(list(dateien), ziel_projekt=self.p)
+            neu = self._zeichnungen_aufnehmen(list(dateien))
+            if neu:
+                self._nach_aufnahme(neu)
+            else:
+                self._status("Diese Zeichnungen sind schon im Projekt.")
 
     def ordner_hinzufuegen(self):
         if self.busy:
@@ -1371,7 +1409,11 @@ class App:
             messagebox.showinfo("Keine PDF", "Im Ordner liegen keine PDF-Dateien.", parent=self.root)
             return
         self._form_anwenden(False)
-        self._starte_lauf(pdfs, ziel_projekt=self.p)
+        neu = self._zeichnungen_aufnehmen(pdfs)
+        if neu:
+            self._nach_aufnahme(neu)
+        else:
+            self._status("Diese Zeichnungen sind schon im Projekt.")
 
     def zeichnung_entfernen(self):
         if self.busy or self.p is None or self.z is None:
@@ -1396,16 +1438,45 @@ class App:
                 self.waehle(n[1].id, zentrieren=True)
         self._status(f"Zeichnung '{z.datei}' entfernt.")
 
-    def erkennung_wiederholen(self):
-        if self.busy or self.z is None:
+    def scan_aktuelle(self):
+        """Scan der aktuellen Zeichnung. Geprüfte, geänderte, gelöschte und selbst gesetzte Nähte bleiben erhalten."""
+        if self.busy or self.p is None or self.z is None:
             return
         self._form_anwenden(False)
-        self._starte_lauf([self.z.pfad], ziel_projekt=self.p)
+        self._scan_starten([self.z], bleibe=self.z)
+
+    def scan_alle(self):
+        if self.busy or self.p is None or not self.p.zeichnungen:
+            return
+        self._form_anwenden(False)
+        zs = list(self.p.zeichnungen)
+        schon = [z for z in zs if z.erkannt]
+        if schon and not messagebox.askyesno(
+                "Alle Zeichnungen scannen",
+                f"{len(zs)} Zeichnungen scannen? {len(schon)} davon wurden schon gescannt und werden erneut erkannt "
+                "(geprüfte, geänderte, gelöschte und selbst gesetzte Nähte bleiben erhalten).\n\n"
+                "Der Scan läuft im Hintergrund und kann abgebrochen werden.", parent=self.root):
+            return
+        self._scan_starten(zs)
+
+    def _scan_starten(self, zeichnungen, bleibe=None):
+        self._scan_bleibe = bleibe
+        self._scan_pfade = [z.pfad for z in zeichnungen]
+        self._starte_lauf([z.pfad for z in zeichnungen], ziel_projekt=self.p)
+
+    def abbrechen(self):
+        if self.busy:
+            abbruch.anfordern()
+            self.btn_abbruch.state(["disabled"])
+            self._lauf_text = "Abbruch angefordert - warte auf das Ende des aktuellen Rechenschritts ..."
 
     # ------------------------------------------------------------------------------------------------ Hintergrundjobs
-    def _starte_job(self, text, arbeit, danach, hinweis="", titel="Fehler"):
+    def _starte_job(self, text, arbeit, danach, hinweis="", titel="Fehler", abbrechbar=False):
         """arbeit(fortschritt) läuft im Hintergrund (fortschritt(text) meldet den Stand), danach(ergebnis) im Hauptthread."""
         self.busy = True
+        abbruch.zuruecksetzen()
+        if abbrechbar:
+            self.btn_abbruch.state(["!disabled"])
         self._job_danach, self._job_hinweis, self._job_titel = danach, hinweis, titel
         self._lauf_t0 = time.time()
         self._lauf_text = text
@@ -1442,6 +1513,7 @@ class App:
     def _job_fertig(self, m):
         self.busy = False
         self.progress.stop()
+        self.btn_abbruch.state(["disabled"])
         if m[0] == "fehler":
             self._status(f"{self._job_titel}.")
             messagebox.showerror(self._job_titel, m[1][-1500:], parent=self.root)
@@ -1455,18 +1527,16 @@ class App:
         self._lauf_ziel, self._lauf_eingabe = ziel_projekt, eingabe
 
         def arbeit(fort):
-            return lauf.erkennen(pdfs, fortschritt=lambda i, n, f: fort(f"Erkenne {f} ({i + 1}/{n}) ..."))
+            return lauf.erkennen(pdfs, fortschritt=lambda i, n, f: fort(f"Scanne {f} ({i + 1}/{n}) ..."))
 
-        self._starte_job(f"Erkenne {len(pdfs)} Zeichnung(en) ...", arbeit, self._lauf_fertig,
-                         hinweis="(A0-Scans brauchen mehrere Minuten)", titel="Erkennung fehlgeschlagen")
+        self._starte_job(f"Scanne {len(pdfs)} Zeichnung(en) ...", arbeit, self._lauf_fertig,
+                         hinweis="(A0-Scans brauchen mehrere Minuten)", titel="Scan fehlgeschlagen", abbrechbar=True)
 
     def _lauf_fertig(self, res):
-        meldungen = []
-        if self._lauf_ziel is not None:
-            p = self._lauf_ziel
-            meldungen = lauf.einarbeiten(p, res)
-        else:
-            p = lauf.neues_projekt(self._lauf_eingabe, res)
+        abgebrochen = abbruch.gesetzt()
+        geplant = len(self._scan_pfade) if hasattr(self, "_scan_pfade") else len(res)
+        p = self._lauf_ziel
+        meldungen = lauf.einarbeiten(p, res)
         if p.pfad and p.pdfs_kopiert:     # neu aufgenommene Zeichnungen ebenfalls ins Projekt kopieren
             try:
                 P.pdfs_kopieren(p, os.path.dirname(os.path.abspath(p.pfad)))
@@ -1475,14 +1545,21 @@ class App:
         self._sichern(p)
         fehler = [z for z in res if z.status != "ok"]
         gesamt = sum(len(z.naehte) for z in res)
-        self.projekt_setzen(p)
+        bleibe = getattr(self, "_scan_bleibe", None)
+        self._scan_bleibe = None
+        self.projekt_setzen(p, bleibe=bleibe)
         ort = p.pfad or "noch nicht gespeichert (Strg+S = Speichern unter)"
-        text = f"{len(res)} Zeichnung(en), {gesamt} Nähte erkannt.\nProjekt: {ort}\n\nAlle Vorschläge müssen geprüft werden."
+        if abgebrochen:
+            text = f"Scan abgebrochen. {len(res)} Zeichnung(en) fertig übernommen, die übrigen sind unverändert.\nProjekt: {ort}"
+            titel = "Scan abgebrochen"
+        else:
+            text = f"{len(res)} Zeichnung(en), {gesamt} Nähte erkannt.\nProjekt: {ort}\n\nAlle Vorschläge müssen geprüft werden."
+            titel = "Scan abgeschlossen"
         if meldungen:
             text += "\n\n" + "\n".join(meldungen)
         if fehler:
             text += "\n\nNicht auswertbar:\n" + "\n".join(f"  {z.datei}: {z.status}" for z in fehler)
-        messagebox.showinfo("Erkennung abgeschlossen", text, parent=self.root)
+        messagebox.showinfo(titel, text, parent=self.root)
 
     # ------------------------------------------------------------------------------------------------ Excel
     def excel_exportieren(self):
@@ -1492,6 +1569,12 @@ class App:
             messagebox.showinfo("Excel", "Es ist kein Projekt geöffnet.", parent=self.root)
             return
         self._form_anwenden(False)
+        if self.p.ungescannt():
+            z = self.p.ungescannt()[0]
+            messagebox.showwarning("Noch nicht gescannt", f"{len(self.p.ungescannt())} Zeichnung(en) sind noch nicht gescannt "
+                                   f"(z. B. {z.datei}).\nDie Excel-Liste gibt es erst, wenn alle gescannt und geprüft sind.", parent=self.root)
+            self.zeichnung_nr(self.p.zeichnungen.index(z))
+            return
         offen = self.p.anzahl_offen()
         if offen:
             messagebox.showwarning(

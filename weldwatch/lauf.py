@@ -45,15 +45,31 @@ def erkennen(pfade, fortschritt=None):
     cfg = config.load(os.path.join(basis_ordner(), "weldwatch_config.json"))
     args = types.SimpleNamespace(kontroll=False, out=ausgabe_ordner(), kontroll_skala=1.5)
     out = []
+    from . import abbruch
     for i, f in enumerate(pfade):
+        if abbruch.gesetzt():
+            break
         if fortschritt:
             fortschritt(i, len(pfade), os.path.basename(f))
         try:
             r = main.process(f, args, cfg)
+        except abbruch.Abgebrochen:      # angefangene Zeichnung verwerfen, fertige bleiben
+            break
         except Exception as ex:   # eine fehlerhafte Datei darf den Lauf nicht stoppen
             r = dict(name=os.path.basename(f), status=f"FEHLER: {ex}", n=0)
         out.append(Zeichnung.aus_ergebnis(r, f))
     return out
+
+
+def leere_zeichnung(pfad):
+    """Zeichnung ohne Erkennung (noch nicht gescannt): wird erst auf Knopfdruck gescannt."""
+    from .projekt import datei_pruefsumme
+    z = Zeichnung(pfad=os.path.abspath(pfad), datei=os.path.basename(pfad), erkannt=False)
+    try:
+        z.pruefsumme = datei_pruefsumme(pfad)
+    except OSError:
+        pass
+    return z
 
 
 def neues_projekt(eingabe, zeichnungen, pfad=""):

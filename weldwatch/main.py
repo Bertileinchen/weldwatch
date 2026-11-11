@@ -9,6 +9,8 @@ def default_vorlage():
 
 def process_raster(pdf_path, name, cfg):
     """Rasterbild: Farbmaske -> Linien -> Symbole; Text per OCR (Tesseract)."""
+    from . import abbruch
+    abbruch.pruefen()
     notes = ["Rasterbild: Erkennung weniger sicher als bei Vektor-PDF - Kontroll-PDF prüfen."]
     dpi = cfg["raster_dpi"]
     rgb = raster.render(pdf_path, dpi)

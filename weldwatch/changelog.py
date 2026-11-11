@@ -1,6 +1,13 @@
 """Änderungsprotokoll für Hilfe > Änderungsprotokoll (neueste Version zuerst)."""
 
 CHANGELOG = [
+    ("0.7.0", "11.11.2026", [
+        "Neue Zeichnungen werden nur aufgenommen, der Scan startet nicht mehr automatisch",
+        "Zwei Scan-Knöpfe: 'Scan: aktuelle Zeichnung' und 'Scan: alle Zeichnungen'",
+        "Laufender Scan lässt sich abbrechen (fertige Zeichnungen bleiben erhalten)",
+        "Nicht gescannte Zeichnungen sind markiert; Excel erst nach Scan und Prüfung aller Zeichnungen",
+        "Reiter 'Weitere Excel-Spalten' heißt jetzt 'Prüfangaben'",
+    ]),
     ("0.6.0", "11.11.2026", [
         "Güteklasse/Prüfklasse als Auswahllisten, Prüfumfang UT/MT/VT folgt aus der Prüfklasse (Standard CP C2 / CT 3); Angabe ohne Umbruch (100%)",
         "Bemerkung in der Excel-Liste: jeder Vermerk in eigener Zeile",
@@ -14,7 +21,7 @@ CHANGELOG = [
     ("0.5.2", "11.11.2026", [
         "Erstes Speichern mit 'Speichern unter', Frage nach Kopie der Zeichnungen ins Projekt; danach wird nur überspeichert",
         "Zeichnungen frei umschaltbar (Knöpfe, Reiter, Strg+Bild auf/ab)",
-        "Eingabefelder für alle weiteren Excel-Spalten (Reiter 'Weitere Excel-Spalten')",
+        "Eingabefelder für alle weiteren Excel-Spalten (Reiter 'Prüfangaben')",
         "Excel-Export mit optionalen Prüf-PDFs im Unterordner",
     ]),
     ("0.5.1", "10.11.2026", [

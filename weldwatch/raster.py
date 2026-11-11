@@ -6,6 +6,22 @@ import cv2
 import pypdfium2 as pdfium
 from .vector import Seg, Word
 from .grid import build_grid_raster
+from . import abbruch
+
+
+class _Tess:
+    """pytesseract mit Abbruchprüfung vor jedem Texterkennungsaufruf."""
+    def __init__(self, modul):
+        self._m = modul
+
+    def __getattr__(self, name):
+        a = getattr(self._m, name)
+        if name in ("image_to_data", "image_to_string"):
+            def aufruf(*x, **k):
+                abbruch.pruefen()
+                return a(*x, **k)
+            return aufruf
+        return a
 
 def _find_tesseract():
     try:
@@ -19,7 +35,7 @@ def _find_tesseract():
             break
     try:
         pytesseract.get_tesseract_version()
-        return pytesseract
+        return _Tess(pytesseract)
     except Exception:
         return None
 

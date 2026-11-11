@@ -190,7 +190,7 @@ def main():
 
         # Erkennungslauf im Hintergrund (Rasterbild ohne Nähte) und Wiedereinlesen ohne Verlust
         vorher = [(n.id, n.status) for n in z.naehte]
-        app._starte_lauf([pdf], ziel_projekt=p)
+        app.scan_aktuelle()
         t0 = time.time()
         while app.busy and time.time() - t0 < 180:
             root.update(); time.sleep(0.1)
@@ -248,10 +248,22 @@ def main():
         gui.filedialog.askdirectory = lambda *a, **k: zus
         anz0 = len(p.zeichnungen)
         app.ordner_hinzufuegen()
+        pruefe(not app.busy, "Hinzufuegen startet keinen Scan")
+        pruefe(len(p.zeichnungen) == anz0 + 1, "Ordner zum Projekt hinzugefuegt")
+        pruefe(not p.zeichnungen[-1].erkannt and p.ungescannt(), "neue Zeichnung ist ungescannt")
+        app.zeichnung_nr(len(p.zeichnungen) - 1)
+        app.scan_aktuelle()
         t0 = time.time()
         while app.busy and time.time() - t0 < 180:
             root.update(); time.sleep(0.1)
-        pruefe(len(p.zeichnungen) == anz0 + 1, "Ordner zum Projekt hinzugefügt")
+        pruefe(p.zeichnungen[-1].erkannt and not p.ungescannt(), "Scan aktuelle Zeichnung")
+        # Abbruch: Scan aller starten und sofort abbrechen
+        app.scan_alle()
+        app.abbrechen()
+        t0 = time.time()
+        while app.busy and time.time() - t0 < 180:
+            root.update(); time.sleep(0.1)
+        pruefe(not app.busy, "abgebrochener Scan beendet")
         app.zeichnung_nr(len(p.zeichnungen) - 1)
         app.zeichnung_entfernen()
         pruefe(len(p.zeichnungen) == anz0 and app.z in p.zeichnungen, "Zeichnung entfernt")

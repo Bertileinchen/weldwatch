@@ -133,6 +133,7 @@ class Zeichnung:
     pruefsumme: str = ""
     naehte: list = field(default_factory=list)
     status: str = "ok"              # "ok" oder Fehlertext der Erkennung
+    erkannt: bool = True            # False = nur hinzugefügt, noch nicht gescannt
 
     def aktive(self):
         return [n for n in self.naehte if n.aktiv]
@@ -164,7 +165,7 @@ class Zeichnung:
                 rel = None
         return dict(pfad=self.pfad, relpfad=rel, original=self.original, datei=self.datei, dn=self.dn, title=self.title, notes=list(self.notes),
                     ex=list(self.ex) if self.ex else None, seite=list(self.seite), grid=grid_to_dict(self.grid),
-                    pruefsumme=self.pruefsumme, status=self.status, naehte=[n.to_dict() for n in self.naehte])
+                    pruefsumme=self.pruefsumme, status=self.status, erkannt=self.erkannt, naehte=[n.to_dict() for n in self.naehte])
 
     @classmethod
     def from_dict(cls, d, projektordner=None):
@@ -178,7 +179,7 @@ class Zeichnung:
         z = cls(pfad=pfad, datei=d.get("datei", os.path.basename(pfad)), original=d.get("original", ""), dn=d.get("dn", ""), title=d.get("title", ""),
                 notes=list(d.get("notes", [])), ex=tuple(d["ex"]) if d.get("ex") else None,
                 seite=tuple(d.get("seite", (0, 0))), grid=grid_from_dict(d.get("grid")),
-                pruefsumme=d.get("pruefsumme", ""), status=d.get("status", "ok"),
+                pruefsumme=d.get("pruefsumme", ""), status=d.get("status", "ok"), erkannt=d.get("erkannt", True),
                 naehte=[Naht.from_dict(n) for n in d.get("naehte", [])])
         return z
 
@@ -218,8 +219,11 @@ class Projekt:
     def anzahl_aktiv(self):
         return sum(len(z.aktive()) for z in self.zeichnungen)
 
+    def ungescannt(self):
+        return [z for z in self.zeichnungen if not z.erkannt and z.status == "ok"]
+
     def vollstaendig_geprueft(self):
-        return self.anzahl_offen() == 0
+        return self.anzahl_offen() == 0 and not self.ungescannt()
 
     def zeichnung_zu_pfad(self, pfad):
         ap = os.path.normcase(os.path.abspath(pfad))
@@ -376,6 +380,7 @@ def zusammenfuehren(alt, neu):
         ergebnis.append(m)
         hinzu += 1
     alt.naehte = ergebnis
+    alt.erkannt = True
     for feld in ("ex", "seite", "grid", "pruefsumme", "notes", "status"):
         setattr(alt, feld, getattr(neu, feld))
     if neu.dn and not alt.dn:
@@ -400,6 +405,8 @@ def zu_gruppen(p):
 
 def excel_schreiben(p, vorlage, ziel, nr_in_remark=True):
     """Excel erst nach vollständiger Prüfung. Wirft ValueError, solange Nähte offen sind."""
+    if p.ungescannt():
+        raise ValueError("Es sind noch nicht gescannte Zeichnungen im Projekt: " + ", ".join(z.datei for z in p.ungescannt()))
     offen = p.anzahl_offen()
     if offen:
         raise ValueError(f"Es sind noch {offen} Nähte ungeprüft.")
