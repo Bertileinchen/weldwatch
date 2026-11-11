@@ -45,6 +45,16 @@ class Naht:
     stoss: str = ""                      # Zusatz unter der Nahtart (T-Stoß)
     wps: str = ""                        # Zusatzinfo (Winkel) für die WPS-Auswahl
     extra: dict = field(default_factory=dict)   # weitere Excel-Spalten (Buchstabe -> Text), von Hand ausgefüllt
+    teil_a: str = ""                     # Schlüssel des ersten Nahtpartners im Teilekatalog (nur Merkhilfe)
+    teil_b: str = ""
+    dicke_a: str = ""                    # Blechstärke Teil A / Teil B in mm (Vorschlag aus dem Katalog, änderbar)
+    dicke_b: str = ""
+
+    @property
+    def blech(self):
+        """'5mm / 10mm' (fehlt eine Seite: '?'); leer, wenn nichts eingetragen ist"""
+        from .teile import blech_text
+        return blech_text(self.dicke_a, self.dicke_b)
 
     @property
     def aktiv(self):
@@ -64,6 +74,9 @@ class Naht:
                  angabe=self.angabe, dicke=self.dicke, gruppe=self.gruppe, bemerkung=list(self.bemerkung),
                  ok=self.ok, quelle=self.quelle, box=[round(v, 2) for v in self.box], status=self.status,
                  stoss=self.stoss, wps=self.wps, extra={k: v for k, v in self.extra.items() if v})
+        for k in ("teil_a", "teil_b", "dicke_a", "dicke_b"):
+            if getattr(self, k):
+                d[k] = getattr(self, k)
         return d
 
     @classmethod
@@ -73,7 +86,8 @@ class Naht:
                 bemerkung=list(d.get("bemerkung", [])), ok=bool(d.get("ok", True)), quelle=d.get("quelle", "ISO"),
                 box=tuple(d.get("box", (0, 0, 0, 0))), status=d.get("status", OFFEN), nr=int(d.get("nr", 0)),
                 id=d.get("id") or _neue_id(), stoss=d.get("stoss", ""), wps=d.get("wps", ""),
-                extra=dict(d.get("extra", {})))
+                extra=dict(d.get("extra", {})), teil_a=d.get("teil_a", ""), teil_b=d.get("teil_b", ""),
+                dicke_a=d.get("dicke_a", ""), dicke_b=d.get("dicke_b", ""))
         if n.status not in STATUS_ALLE:
             n.status = OFFEN
         return n
@@ -93,7 +107,7 @@ class Naht:
             bem.append("manuell ergänzt")
         return Entry(self.square, self.x, self.y, self.art, self.angabe, self.dicke, self.gruppe, bem, True,
                      self.quelle, tuple(self.box), self.nr, self.stoss, self.wps,
-                     {k: v for k, v in self.extra.items() if v})
+                     {k: v for k, v in self.extra.items() if v}, self.blech)
 
 
 def grid_to_dict(g):
@@ -109,6 +123,11 @@ def grid_from_dict(d):
     from .grid import Grid
     return Grid([tuple(c) for c in d["cols"]], [tuple(r) for r in d["rows"]], d["width"], d["height"],
                 xb=list(d["xb"]), yb=list(d["yb"]))
+
+
+def _katalog_aus_dict(d):
+    from .teile import Katalog
+    return Katalog.from_dict(d) if d else None
 
 
 def datei_pruefsumme(pfad):
@@ -209,6 +228,7 @@ class Projekt:
     pfad: str = ""                            # Ort der Projektdatei (nicht in der Datei selbst); leer = noch nie gespeichert
     eingabe: str = ""                         # PDF/Ordner, aus dem das Projekt erkannt wurde
     pdfs_kopiert: bool = False                # Zeichnungen liegen als Kopie im Projektordner
+    katalog: object = None                    # teile.Katalog (STP-Teile, Stücklisten) oder None
 
     def alle_naehte(self):
         return [(z, n) for z in self.zeichnungen for n in z.naehte]
@@ -218,6 +238,10 @@ class Projekt:
 
     def anzahl_aktiv(self):
         return sum(len(z.aktive()) for z in self.zeichnungen)
+
+    def anzahl_ohne_blech(self):
+        """aktive Nähte, bei denen die Blechstärken beider Nahtpartner nicht vollständig eingetragen sind"""
+        return sum(1 for z in self.zeichnungen for n in z.aktive() if not n.blech or "?" in n.blech)
 
     def ungescannt(self):
         return [z for z in self.zeichnungen if not z.erkannt and z.status == "ok"]
@@ -245,6 +269,7 @@ class Projekt:
         daten = dict(programm="WeldWatch", version=VERSION, basis=self.basis, vorlage=self.vorlage,
                      eingabe=self.eingabe, pdfs_kopiert=self.pdfs_kopiert,
                      erstellt=self.erstellt, geaendert=self.geaendert,
+                     katalog=self.katalog.to_dict() if self.katalog is not None and not self.katalog.leer() else None,
                      zeichnungen=[z.to_dict(ordner) for z in self.zeichnungen])
         os.makedirs(ordner, exist_ok=True)
         tmp = pfad + ".tmp"
@@ -266,6 +291,7 @@ class Projekt:
         p = cls(basis=d.get("basis", "Projekt"), vorlage=d.get("vorlage", ""), erstellt=d.get("erstellt", ""),
                 geaendert=d.get("geaendert", ""), pfad=pfad, eingabe=d.get("eingabe", ""),
                 pdfs_kopiert=bool(d.get("pdfs_kopiert", False)),
+                katalog=_katalog_aus_dict(d.get("katalog")),
                 zeichnungen=[Zeichnung.from_dict(z, ordner) for z in d.get("zeichnungen", [])])
         return p
 

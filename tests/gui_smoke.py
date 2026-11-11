@@ -242,6 +242,40 @@ def main():
         pruefe(mn.nr == max(vor.values()) + 1 and all(n.nr == vor[n.id] for n in z.aktive() if n.id in vor), "von Hand gesetzte Naht: nächste Nummer, andere unverändert")
         P.loeschen(z, mn)
 
+        # Blechstärken: Katalog, Teil A/B wählen, Dicke als Vorschlag, wie vorige Naht, Projektdatei
+        from weldwatch import stp as _stp, teile as _teile
+        from weldwatch.stueckliste import Zeile as _Zeile
+        k = _teile.Katalog()
+        k.stp_setzen([_stp.Teil("X-1_3__WINKEL", "X-1", "3", "X-1.3", "WINKEL", 2.0, _stp.OK),
+                      _stp.Teil("X-1_4__BLECH", "X-1", "4", "X-1.4", "BLECH", 10.0, _stp.OK)], "t.stp")
+        k.stueckliste_hinzu(z.dn, [_Zeile(1, "1", "X-1.3", "WINKEL"), _Zeile(2, "2", "X-1.4", "BLECH")])
+        p.katalog = k
+        app._wahlen_aufbauen()
+        pruefe(len(app._wahl_labels) == 2 and all(str(w) in app._wahl_labels for w in app.c_teil_a.cget("values")), "Auswahlliste Teil A/B gefüllt")
+        n1, n2 = z.aktive()[0], z.aktive()[1]
+        app.waehle(n1.id)
+        app.v["teil_a"].set(app._wahl_labels[0]); app._teil_gewaehlt(app.c_teil_a, "dicke_a")
+        app.v["teil_b"].set(app._wahl_labels[1]); app._teil_gewaehlt(app.c_teil_b, "dicke_b")
+        pruefe(app.v["dicke_a"].get() == "2" and app.v["dicke_b"].get() == "10", "Dicke wird aus dem Katalog vorgeschlagen")
+        pruefe(app.v["blech"].get() == "Blechstärken: 2mm / 10mm", "Blechstärken werden angezeigt")
+        status_vor = n1.status
+        app._form_anwenden(False)
+        pruefe(n1.blech == "2mm / 10mm" and n1.teil_a == "pos:" + _teile.norm(z.dn) + ":1" and n1.status == status_vor,
+               "Blechstärken in der Naht gespeichert, Prüfstatus unverändert")
+        app.waehle(n2.id)
+        pruefe(app.v["dicke_a"].get() == (n2.dicke_a or ""), "andere Naht zeigt eigene Werte")
+        app.blech_wie_vorige()
+        app._form_anwenden(False)
+        pruefe(n2.blech == "2mm / 10mm", "'Teile wie vorige Naht' übernimmt Auswahl und Dicke")
+        app.waehle(n1.id)
+        pruefe(app.v["teil_a"].get() == app._wahl_labels[0], "Auswahl wird als Beschriftung wieder angezeigt")
+        app.v["dicke_b"].set("12,5"); app._form_anwenden(False)
+        pruefe(n1.blech == "2mm / 12,5mm", "Dicke ist überschreibbar")
+        pruefe(p.anzahl_ohne_blech() == len(z.aktive()) - 2, "Zähler für fehlende Blechstärken")
+        zp = os.path.join(d, "proj", "blech.wwp"); p.speichern(zp, merke=False)
+        q = P.Projekt.laden(zp)
+        pruefe(q.katalog is not None and len(q.katalog.stp) == 2 and q.zeichnungen[0].naehte[0].dicke_b == "12,5", "Katalog und Blechstärken in der Projektdatei")
+
         # Zeichnungen hinzufügen (Ordner) und entfernen
         zus = os.path.join(d, "zusatz"); os.makedirs(zus)
         Image.new("RGB", (1200, 1200), "white").save(os.path.join(zus, "dritte.pdf"), "PDF", resolution=72)
