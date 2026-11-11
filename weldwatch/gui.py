@@ -237,8 +237,7 @@ class App:
         tb.pack(side="top", fill="x")
         ttk.Button(tb, text="Öffnen ...", command=self.dialog_oeffnen).pack(side="left")
         ttk.Button(tb, text="Speichern", command=self.speichern).pack(side="left", padx=(4, 12))
-        self.btn_neu = tk.Checkbutton(tb, text="Neue Naht setzen (A)", variable=self.var_neu, command=self._neu_modus_geaendert,
-                                      indicatoron=False, relief="raised", bd=2, padx=10, pady=2, selectcolor="#ffd089")
+        self.btn_neu = ttk.Button(tb, text="Neue Naht setzen (A)", command=self.neu_modus_umschalten)
         self.btn_neu.pack(side="left")
         ttk.Button(tb, text="Nächste offene (N)", command=self.naechste_offene).pack(side="left", padx=4)
         ttk.Button(tb, text="Ganze Seite (F)", command=self.ganze_seite).pack(side="left")
@@ -992,6 +991,7 @@ class App:
         self._neu_modus_geaendert()
 
     def _neu_modus_geaendert(self):
+        self.btn_neu.state(["pressed"] if self.var_neu.get() else ["!pressed"])      # gedrückt = Modus aktiv, sonst wie die anderen Knöpfe
         self.canvas.config(cursor="crosshair" if self.var_neu.get() else "")
         if self.var_neu.get():
             self._status("Neue Naht: in die Zeichnung klicken oder einen Rahmen aufziehen. Esc bricht ab.")
