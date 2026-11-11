@@ -11,7 +11,7 @@ from tkinter import ttk, filedialog, messagebox
 
 from PIL import ImageTk
 
-from . import lauf, output
+from . import lauf, output, pruefklassen
 from . import projekt as P
 from .pdfansicht import Ansicht, PdfSeite
 
@@ -102,6 +102,8 @@ class App:
         self.tab_btns = []
         self.extra_vars = {}
         self.x_widgets = []
+        self.x_rollen = {}
+        self.x_umfang = {}
         self.wps_buchstabe = None
         self.f_fett = tkfont.nametofont("TkDefaultFont").copy()
         self.f_fett.configure(weight="bold")
@@ -365,12 +367,26 @@ class App:
         self.wps_buchstabe = wps
         self.e_wps._lbl.config(text=(f"WPS (Sp. {wps})\n(vorbelegt: Winkel)" if wps else "WPS\n(vorbelegt: Winkel)"))
         zeile = 0
+        self.x_rollen = pruefklassen.rollen(labels)
+        self.x_umfang = {}
         for b, t in output.zusatz_spalten(labels, wps):
+            rolle = self.x_rollen.get(b)
             ttk.Label(self.extra_tab, text=f"{t}  (Sp. {b})", wraplength=170, justify="left").grid(row=zeile, column=0, sticky="w", padx=(0, 6), pady=1)
+            if rolle in ("ut", "mt", "vt"):      # Prüfumfang: nur Anzeige, folgt aus der Prüfklasse
+                var = tk.StringVar()
+                ttk.Label(self.extra_tab, textvariable=var, font=self.f_fett).grid(row=zeile, column=1, sticky="w", pady=1)
+                self.x_umfang[rolle] = var
+                zeile += 1
+                continue
             var = tk.StringVar()
-            e = ttk.Entry(self.extra_tab, textvariable=var)
+            if rolle in ("cp", "ct"):
+                e = ttk.Combobox(self.extra_tab, textvariable=var, state="readonly",
+                                 values=pruefklassen.CP_LISTE if rolle == "cp" else pruefklassen.CT_LISTE)
+                e.bind("<<ComboboxSelected>>", lambda ev, r=rolle: self._klasse_gewaehlt(r))
+            else:
+                e = ttk.Entry(self.extra_tab, textvariable=var)
+                e.bind("<Return>", lambda ev: (self.naht_bestaetigen(), "break")[1])
             e.grid(row=zeile, column=1, sticky="ew", pady=1)
-            e.bind("<Return>", lambda ev: (self.naht_bestaetigen(), "break")[1])
             btn = ttk.Button(self.extra_tab, text="→ alle", width=7, command=lambda b=b: self.extra_fuer_alle(b))
             btn.grid(row=zeile, column=2, padx=(4, 0), pady=1)
             self.extra_vars[b] = var
@@ -380,6 +396,24 @@ class App:
                   text="Diese Angaben gehen unverändert in die Excel-Liste. '→ alle' trägt den Wert bei allen Nähten dieser "
                        "Zeichnung ein. Sie ändern den Prüfstatus nicht.").grid(row=zeile, column=0, columnspan=3, sticky="w", pady=(6, 0))
         self._form_fuellen(self._naht())
+
+    def _spalte(self, rolle):
+        return next((b for b, r in self.x_rollen.items() if r == rolle), None)
+
+    def _klasse_gewaehlt(self, rolle):
+        """Güteklasse gewählt -> passende Prüfklasse (Tabelle) setzen; danach Prüfumfang neu anzeigen."""
+        if rolle == "cp" and self._spalte("ct") in self.extra_vars:
+            cp = self.extra_vars[self._spalte("cp")].get()
+            if cp in pruefklassen.CP_ZU_CT:
+                self.extra_vars[self._spalte("ct")].set(pruefklassen.CP_ZU_CT[cp])
+        self._umfang_anzeigen()
+
+    def _umfang_anzeigen(self):
+        sp = self._spalte("ct")
+        ct = self.extra_vars[sp].get() if sp in self.extra_vars else pruefklassen.STANDARD_CT
+        for r, w in zip(("ut", "mt", "vt"), pruefklassen.umfang(ct)):
+            if r in self.x_umfang:
+                self.x_umfang[r].set(w)
 
     def vorlage_waehlen(self):
         if self.p is None:
@@ -403,6 +437,8 @@ class App:
             return
         self._form_anwenden(False)
         P.extra_fuer_alle(self.z, b, wert)
+        if self.x_rollen.get(b) == "cp" and self._spalte("ct") in self.extra_vars:    # Güteklasse bringt ihre Prüfklasse mit
+            P.extra_fuer_alle(self.z, self._spalte("ct"), self.extra_vars[self._spalte("ct")].get().strip())
         self._form_fuellen(self._naht())
         self._sichern()
         self._status(f"Spalte {b}: bei {anz} Nähten eingetragen.")
@@ -613,11 +649,15 @@ class App:
 
     # ------------------------------------------------------------------------------------------------ Formular
     def _form_fuellen(self, n):
-        for w in self.f_widgets + self.x_widgets:
+        for w in self.f_widgets:
             w.configure(state="normal")
+        for w in self.x_widgets:
+            w.configure(state="readonly" if isinstance(w, ttk.Combobox) else "normal")
         self.t_angabe.delete("1.0", "end")
         if n is None:
             for v in list(self.v.values()) + list(self.extra_vars.values()):
+                v.set("")
+            for v in self.x_umfang.values():
                 v.set("")
             self._snap = None
             self.lbl_quelle.config(text="Keine Naht gewählt. Naht in der Zeichnung oder in der Liste anklicken.")
@@ -635,7 +675,9 @@ class App:
         self.v["wps"].set(n.wps)
         self.v["bem"].set("; ".join(n.bemerkung))
         for b, var in self.extra_vars.items():
-            var.set(n.extra.get(b, ""))
+            standard = {"cp": pruefklassen.STANDARD_CP, "ct": pruefklassen.STANDARD_CT}.get(self.x_rollen.get(b), "")
+            var.set(n.extra.get(b) or standard)
+        self._umfang_anzeigen()
         hinweis = "" if n.ok or n.status != P.OFFEN else "  -  Erkennung unsicher, bitte genau prüfen"
         self.lbl_quelle.config(text=f"Nr. {n.nr or '-'}  |  Quelle: {n.quelle}  |  Status: {n.status}{hinweis}")
         self._snap = self._form_werte()

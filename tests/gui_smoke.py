@@ -6,7 +6,7 @@ import openpyxl
 from PIL import Image, ImageDraw
 from weldwatch import gui, lauf, projekt as P
 from tests.test_projekt import beispiel_zeichnung
-from tests.test_speichern import vorlage_machen
+from tests.test_speichern import vorlage_machen, PruefklassenTests
 
 FALSCH = []
 
@@ -198,6 +198,18 @@ def main():
         pruefe(p.zeichnungen[0].status == "ok", "Neulauf liefert Ergebnis")
         pruefe(sorted(vorher) == sorted((n.id, n.status) for n in p.zeichnungen[0].naehte),
                "Neulauf ändert weder Prüfstatus noch Nähte (geprüfte/manuelle bleiben)")
+        # Güte-/Prüfklasse: Standard, Auswahl bestimmt Prüfklasse und Prüfumfang
+        v2 = os.path.join(d, "v2.xlsx"); PruefklassenTests().vorlage(v2)
+        p.vorlage = v2; app._extras_aufbauen()
+        app.waehle(next(n for n in z.aktive() if "I" not in n.extra).id)
+        cp, ct = app._spalte("cp"), app._spalte("ct")
+        pruefe(app.extra_vars[cp].get() == "CP C2" and app.extra_vars[ct].get() == "CT 3" and app.x_umfang["ut"].get() == "-",
+               "Standard CP C2 / CT 3 mit Prüfumfang")
+        app.extra_vars[cp].set("CP A"); app._klasse_gewaehlt("cp")
+        pruefe(app.extra_vars[ct].get() == "CT 1" and app.x_umfang["mt"].get() == "100 %", "Güteklasse bestimmt Prüfklasse und Prüfumfang")
+        app.extra_fuer_alle(cp)
+        pruefe(all(n.extra.get(cp) == "CP A" and n.extra.get(ct) == "CT 1" for n in z.aktive()), "Güteklasse für alle Nähte")
+
         # Beenden: ungespeichertes Projekt fragt nach
         ende = []
         orig = root.destroy

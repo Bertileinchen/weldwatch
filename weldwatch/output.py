@@ -5,6 +5,7 @@ from openpyxl.styles import Font, Alignment
 from openpyxl.utils import get_column_letter
 
 FIRST = 7
+from . import pruefklassen
 
 def wps_spalte(ws):
     """Spaltennummer der Überschrift "WPS" in den Kopfzeilen der Vorlage (nächste zur Datenzeile); None wenn nicht gefunden."""
@@ -69,6 +70,9 @@ def write_excel(template, out_path, groups, nr_in_remark=True):
     ws["O3"] = "Rev.00"
     # Stil der Musterzeile merken, Inhalt der Muster-/Leerzeilen löschen
     wps_col = wps_spalte(ws)
+    labels, _w = vorlage_spalten(template)
+    rolle = pruefklassen.rollen(labels)
+    spalte_von = {r: b for b, r in rolle.items()}
     style = {c: copy.copy(ws.cell(FIRST, c)._style) for c in range(1, 16)}
     height = ws.row_dimensions[FIRST].height
     for r in range(FIRST, max(ws.max_row, FIRST + len(entries_all)) + 1):
@@ -90,8 +94,19 @@ def write_excel(template, out_path, groups, nr_in_remark=True):
         ws.cell(r, 8).value = e.gruppe
         if wps_col and e.wps:
             ws.cell(r, wps_col).value = e.wps
-        ws.cell(r, 15).value = "; ".join(e.bemerkung) or None
-        for buchstabe, wert in (getattr(e, "extra", None) or {}).items():
+        ws.cell(r, 15).value = ";\n".join(e.bemerkung) or None     # jeder Vermerk in eigener Zeile
+        al = copy.copy(ws.cell(r, 15).alignment); al.wrap_text = True
+        ws.cell(r, 15).alignment = al
+        extra = dict(getattr(e, "extra", None) or {})
+        if "cp" in spalte_von:
+            extra[spalte_von["cp"]] = extra.get(spalte_von["cp"]) or pruefklassen.STANDARD_CP
+        if "ct" in spalte_von:
+            extra[spalte_von["ct"]] = extra.get(spalte_von["ct"]) or pruefklassen.STANDARD_CT
+        ct = extra.get(spalte_von["ct"]) if "ct" in spalte_von else pruefklassen.STANDARD_CT
+        for rl, wert in zip(("ut", "mt", "vt"), pruefklassen.umfang(ct)):   # Prüfumfang folgt aus der Prüfklasse
+            if rl in spalte_von:
+                extra[spalte_von[rl]] = wert
+        for buchstabe, wert in extra.items():
             if wert and buchstabe not in ERKANNTE_SPALTEN and buchstabe != (get_column_letter(wps_col) if wps_col else None):
                 zelle = ws[f"{buchstabe}{r}"]
                 zelle.value = wert

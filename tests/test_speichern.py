@@ -70,6 +70,45 @@ class SpaltenTests(unittest.TestCase):
             self.assertEqual(q.zeichnungen[0].naehte[0].extra, {"I": "X1"})
 
 
+class PruefklassenTests(unittest.TestCase):
+    def vorlage(self, pfad):
+        wb = openpyxl.Workbook(); ws = wb.active; ws.title = "SNP"
+        kopf = {"A": "Zeichnung", "B": "Planquadrat", "C": "Nahtart", "D": "Dicke", "E": "Angabe", "G": "WPS", "H": "Grundwerkstoff",
+                "I": "Schweißnahtgüteklasse", "J": "Schweißnahtprüfklasse", "K": "Volumetrische Prüfungen UT",
+                "L": "Oberflächenprüfungen MT", "M": "Sichtprüfung VT", "O": "Bemerkung"}
+        for b, t in kopf.items():
+            ws[f"{b}6"] = t
+        ws["I5"] = "Prüfumfang"
+        wb.save(pfad)
+
+    def test_tabelle(self):
+        from weldwatch import pruefklassen as K
+        self.assertEqual(K.umfang("CT 1"), ("100 %", "100 %", "100 %"))
+        self.assertEqual(K.umfang("CT 2"), ("10 %", "10 %", "100 %"))
+        self.assertEqual(K.umfang("CT 4"), ("-", "-", "100 %"))
+        self.assertEqual((K.CP_ZU_CT["CP B1"], K.CP_ZU_CT["CP D"]), ("CT 2", "CT 4"))
+        self.assertEqual(K.umfang("irgendwas"), ("", "", ""))
+
+    def test_excel_standard_und_auswahl(self):
+        with tempfile.TemporaryDirectory() as d:
+            v = os.path.join(d, "v.xlsx"); self.vorlage(v)
+            z = beispiel_zeichnung()
+            P.extras_setzen(z.naehte[1], {"I": "CP A", "J": "CT 1"})
+            P.extras_setzen(z.naehte[2], {"I": "CP B2", "J": "CT 2"})
+            z.naehte[0].bemerkung = ["beidseitig", "interne Bezeichnung VH20-100 / VH20-100"]
+            for n in z.naehte:
+                P.bestaetigen(n)
+            ziel = os.path.join(d, "o.xlsx")
+            P.excel_schreiben(P.Projekt(basis="T", zeichnungen=[z]), v, ziel)
+            ws = openpyxl.load_workbook(ziel)["SNP"]
+            zeile = lambda r: [ws.cell(r, c).value for c in range(9, 14)]
+            self.assertEqual(zeile(7), ["CP C2", "CT 3", "-", "-", "100 %"])          # Standard
+            self.assertEqual(zeile(8), ["CP A", "CT 1", "100 %", "100 %", "100 %"])
+            self.assertEqual(zeile(9), ["CP B2", "CT 2", "10 %", "10 %", "100 %"])
+            self.assertEqual(ws["O7"].value, "beidseitig;\ninterne Bezeichnung VH20-100 / VH20-100")
+            self.assertTrue(ws["O7"].alignment.wrap_text)
+
+
 class SpeichernTests(unittest.TestCase):
     def test_sicherung_setzt_speicherort_nicht(self):
         with tempfile.TemporaryDirectory() as d:
