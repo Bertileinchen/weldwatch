@@ -152,7 +152,7 @@ def main():
         pruefe(erste.extra == {"I": "WPQR-7", "L": "100 % VT"} and erste.status == status_vorher,
                "weitere Spalten übernommen, Status unverändert")
         app.extra_vars["J"].set("AP-1"); app.extra_fuer_alle("J")
-        pruefe(all(n.extra.get("J") == "AP-1" for n in z.aktive()), "'→ alle' trägt bei allen Nähten ein")
+        pruefe(all(n.extra.get("J") == "AP-1" for n in z.aktive()), "'alle'-Knopf trägt bei allen Nähten ein")
         app.waehle(erste.id)
         pruefe(app.extra_vars["I"].get() == "WPQR-7" and app.extra_vars["J"].get() == "AP-1", "Felder zeigen die gespeicherten Werte")
 
