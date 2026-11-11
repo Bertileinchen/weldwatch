@@ -221,7 +221,8 @@ def main():
         app.filter_vars["art"].set(art0); app._filter_geaendert()
         angez = [n for n in z.aktive() if n.art == art0]
         pruefe(0 < len(angez) < len(z.aktive()) and {n.id for n in app._gefiltert()} == {n.id for n in angez}, "Filter blendet Nähte aus")
-        pruefe(art0 in app.filter_cbs["art"].opt["values"] and gui.ALLE in app.filter_cbs["art"].opt["values"], "Filterliste enthält die Werte")
+        werte = [str(w) for w in app.filter_cbs["art"].cget("values")]
+        pruefe(art0 in werte and gui.ALLE in werte, "Filterliste enthält die Werte")
         app.waehle(angez[0].id)
         app.extra_vars[cp].set("CP A"); app._klasse_gewaehlt("cp"); app.extra_fuer_alle(cp)
         pruefe(all(n.extra.get(cp) == "CP A" and n.extra.get(ct) == "CT 1" for n in angez), "'alle' trägt bei den angezeigten Nähten ein")
