@@ -1,5 +1,12 @@
 import os, sys, traceback
 
+# Die exe ist ohne Konsolenfenster gebaut: dann gibt es keine Standard-Ströme, Ausgaben gehen ins Leere.
+for _name in ("stdout", "stderr"):
+    if getattr(sys, _name) is None:
+        setattr(sys, _name, open(os.devnull, "w", encoding="utf-8"))
+if sys.stdin is None:
+    sys.stdin = open(os.devnull, "r")
+
 def _basis():
     return os.path.dirname(sys.executable) if getattr(sys, "frozen", False) else os.path.dirname(os.path.abspath(__file__))
 
@@ -41,6 +48,16 @@ if __name__ == "__main__":
             code = 1
     except BaseException:
         print("\nFEHLER:\n"); traceback.print_exc(); code = 1
+        if getattr(sys, "frozen", False):      # ohne Konsole sonst unsichtbar: Protokoll schreiben und melden
+            try:
+                pfad = os.path.join(_basis(), "weldwatch_start_fehler.log")
+                with open(pfad, "w", encoding="utf-8") as lg:
+                    traceback.print_exc(file=lg)
+                if os.name == "nt":
+                    import ctypes
+                    ctypes.windll.user32.MessageBoxW(0, "WeldWatch konnte nicht starten.\nDetails: " + pfad, "WeldWatch", 0x10)
+            except Exception:
+                pass
     if not gui_lauf:
         try:
             input("\nEnter drücken zum Schließen ...")
