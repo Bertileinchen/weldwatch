@@ -87,7 +87,7 @@ def write_excel(template, out_path, groups, nr_in_remark=True):
         ws.cell(r, 1).value = dn
         ws.cell(r, 2).value = f"{e.square}\n({e.nr})" if nr_in_remark else e.square
         ws.cell(r, 3).value = f"{e.art}\n{e.stoss}" if e.stoss else e.art
-        ws.cell(r, 4).value = e.dicke or None
+        ws.cell(r, 4).value = None      # Spalte D: nur Materialstärken, bleibt leer
         ws.cell(r, 5).value = e.angabe
         for c in (2, 3, 5):   # Zeilenumbruch: Nr. unter Planquadrat, T-Stoß unter Nahtart, beidseitige Nähte untereinander
             al = copy.copy(ws.cell(r, c).alignment); al.wrap_text = True

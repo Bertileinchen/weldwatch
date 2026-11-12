@@ -67,12 +67,7 @@ def build_entries(found, pt_labels, grid, ex, cfg):
                 rem.append("Symbol unsicher (evtl. Maßhilfslinie) - prüfen")
             for n in f.notes:
                 rem.append(n)
-            # Dicke: bei Stumpfnähten s<Maß>
-            dicke = ""
-            for _, d in sides:
-                if d["kind"] in PREFIX and d.get("size", "").replace(",", "").replace(".", "").isdigit():
-                    dicke = f"s{d['size']}"
-                    break
+            dicke = ""      # Spalte D ist nur für Materialstärken reserviert, das Nahtmaß steht in der Angabe
             out.append(Entry(grid.square(cx, f.y) if grid else "-", cx, f.y, art, angabe, dicke,
                              format_groups(f.groups, cfg), rem, ok, "ISO",
                              (f.x0, f.y - 22, f.x1, f.y + 22)))

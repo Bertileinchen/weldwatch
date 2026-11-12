@@ -1,6 +1,9 @@
 """Änderungsprotokoll für Hilfe > Änderungsprotokoll (neueste Version zuerst)."""
 
 CHANGELOG = [
+    ("0.7.2", "12.11.2026", [
+        "Spalte D der Excel-Liste bleibt leer (nur für Materialstärken reserviert); Nahtmaß steht in der Angabe, Feld 'Dicke' entfällt",
+    ]),
     ("0.7.1", "12.11.2026", [
         "STP- und Stücklisten-Anbindung (Blechstärken, 0.8.x) wieder entfernt; Stand wie 0.7.0",
     ]),

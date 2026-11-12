@@ -364,7 +364,7 @@ class App:
         self.extra_tab = ttk.Frame(self.nb, padding=6)
         self.extra_tab.columnconfigure(1, weight=1)
         self.nb.add(self.extra_tab, text="Prüfangaben")
-        self.v = {k: tk.StringVar() for k in ("square", "art", "stoss", "dicke", "gruppe", "wps", "bem")}
+        self.v = {k: tk.StringVar() for k in ("square", "art", "stoss", "gruppe", "wps", "bem")}
         self.f_widgets = []
         zeile = 0
 
@@ -381,14 +381,13 @@ class App:
         self.e_square = feld("Planquadrat", ttk.Entry(form, textvariable=self.v["square"], width=8))
         self.c_art = feld("Nahtart", ttk.Combobox(form, textvariable=self.v["art"], values=ARTEN))
         self.c_stoss = feld("Zusatz Nahtart", ttk.Combobox(form, textvariable=self.v["stoss"], values=["", "T-Stoß"]))
-        self.e_dicke = feld("Dicke (Sp. D)", ttk.Entry(form, textvariable=self.v["dicke"], width=8))
         self.t_angabe = feld("Zeichnungs-\nangabe", tk.Text(form, height=2, width=20, wrap="word", undo=True))
         self.c_gruppe = feld("Werkstoffgruppe", ttk.Combobox(form, textvariable=self.v["gruppe"], values=GRUPPEN))
         self.e_wps = feld("WPS\n(vorbelegt: Winkel)", ttk.Entry(form, textvariable=self.v["wps"], width=16))
         self.e_bem = feld("Bemerkung\n(mit ; trennen)", ttk.Entry(form, textvariable=self.v["bem"]))
         self.lbl_quelle = ttk.Label(form, text="", foreground="#555555", wraplength=330, justify="left")
         self.lbl_quelle.grid(row=zeile, column=0, columnspan=2, sticky="w", pady=(4, 0))
-        for w in (self.e_square, self.c_art, self.c_stoss, self.e_dicke, self.c_gruppe, self.e_wps, self.e_bem):
+        for w in (self.e_square, self.c_art, self.c_stoss, self.c_gruppe, self.e_wps, self.e_bem):
             w.bind("<Return>", lambda e: (self.naht_bestaetigen(), "break")[1])
         self.t_angabe.bind("<Control-Return>", lambda e: (self.naht_bestaetigen(), "break")[1])
 
@@ -856,7 +855,6 @@ class App:
         self.v["square"].set(n.square)
         self.v["art"].set(n.art)
         self.v["stoss"].set(n.stoss)
-        self.v["dicke"].set(n.dicke)
         self.t_angabe.insert("1.0", n.angabe)
         self.v["gruppe"].set(n.gruppe)
         self.v["wps"].set(n.wps)
@@ -884,7 +882,7 @@ class App:
 
     def _form_werte(self):
         return dict(square=self.v["square"].get().strip(), art=self.v["art"].get().strip(), stoss=self.v["stoss"].get().strip(),
-                    dicke=self.v["dicke"].get().strip(), angabe=self.t_angabe.get("1.0", "end-1c").strip(),
+                    angabe=self.t_angabe.get("1.0", "end-1c").strip(),
                     gruppe=self.v["gruppe"].get().strip(), wps=self.v["wps"].get().strip(), bem=self.v["bem"].get().strip(),
                     x={b: v.get().strip() for b, v in self.extra_vars.items()})
 
@@ -907,9 +905,9 @@ class App:
                         f"'{w['gruppe']}' passt nicht zum Schema (Gr.1-11, Gr.21-26 nur als Gr.22/23, Mischverbindung 'Gr.1 + Gr.8').\n\n"
                         "Trotzdem übernehmen?", parent=self.root):
                     return False
-        erkannt = ("square", "art", "stoss", "dicke", "angabe", "gruppe", "bem")
+        erkannt = ("square", "art", "stoss", "angabe", "gruppe", "bem")
         if bestaetigen or any(w[k] != self._snap[k] for k in erkannt):
-            P.aendern(self.z, n, square=w["square"] or n.square, art=w["art"], stoss=w["stoss"], dicke=w["dicke"],
+            P.aendern(self.z, n, square=w["square"] or n.square, art=w["art"], stoss=w["stoss"],
                       angabe=w["angabe"], gruppe=w["gruppe"], bemerkung=w["bem"])
         # WPS und weitere Excel-Spalten sind reine Eingabedaten: ändern den Prüfstatus nicht
         n.wps = w["wps"]
