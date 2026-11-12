@@ -1,6 +1,9 @@
 """Änderungsprotokoll für Hilfe > Änderungsprotokoll (neueste Version zuerst)."""
 
 CHANGELOG = [
+    ("0.7.1", "12.11.2026", [
+        "STP- und Stücklisten-Anbindung (Blechstärken, 0.8.x) wieder entfernt; Stand wie 0.7.0",
+    ]),
     ("0.7.0", "11.11.2026", [
         "Neue Zeichnungen werden nur aufgenommen, der Scan startet nicht mehr automatisch",
         "Zwei Scan-Knöpfe: 'Scan: aktuelle Zeichnung' und 'Scan: alle Zeichnungen'",
