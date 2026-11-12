@@ -1,15 +1,11 @@
 """Änderungsprotokoll für Hilfe > Änderungsprotokoll (neueste Version zuerst)."""
 
 CHANGELOG = [
-    ("0.8.1", "11.11.2026", [
-        "Spalte D der Excel-Liste enthält jetzt die Blechstärken beider Nahtpartner ('5mm / 10mm')",
-        "Das Nahtmaß (s20, a5) steht nicht mehr in Spalte D, es ist schon in der Nahtangabe; das Feld 'Dicke' entfällt",
-    ]),
     ("0.8.0", "11.11.2026", [
         "Blechstärken beider Nahtpartner je Naht ('5mm / 10mm'): Teil A und Teil B im Reiter 'Naht' wählen, Dicke kommt als Vorschlag",
         "Datei > STP-Datei laden: Teile und Dicke werden aus dem 3D-Modell berechnet (unsichere Werte mit '?' markiert, von Hand änderbar)",
         "Datei > Stücklisten (PDF) laden: Positionen der Zeichnung und Teilenummern; ohne STP bleibt nur die Eingabe von Hand",
-        "Blechstärken werden in die Excel-Liste geschrieben; Rückfrage beim Export, wenn Blechstärken fehlen",
+        "Eigene Spalte in der Excel-Vorlage (Überschrift mit Blech/Dicke/Stärke) wird automatisch gefüllt; Rückfrage, wenn Blechstärken fehlen",
     ]),
     ("0.7.0", "11.11.2026", [
         "Neue Zeichnungen werden nur aufgenommen, der Scan startet nicht mehr automatisch",

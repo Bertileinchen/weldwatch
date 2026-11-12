@@ -157,7 +157,13 @@ KOPF = {"A": "Zeichnung", "B": "Planquadrat", "C": "Nahtart", "D": "Dicke", "E":
 
 
 class ExcelBlechTests(unittest.TestCase):
-    def test_excel_schreibt_blech_in_spalte_d(self):
+    def test_spalte_erkennen(self):
+        self.assertEqual(output.blech_spalte(KOPF, "G"), "F")
+        self.assertIsNone(output.blech_spalte({"D": "Dicke", "F": "Stoßart", "I": "WPQR"}))      # Spalte D ist die Nahtdicke
+        self.assertEqual(output.blech_spalte({"D": "Dicke", "F": "Materialstärke"}), "F")
+        self.assertNotIn("F", [b for b, _ in output.zusatz_spalten(KOPF, "G")])              # kein Eingabefeld in den Prüfangaben
+
+    def test_excel_schreibt_blech(self):
         with tempfile.TemporaryDirectory() as d:
             v = os.path.join(d, "v.xlsx"); vorlage(v, KOPF)
             z = beispiel_zeichnung()
@@ -169,8 +175,21 @@ class ExcelBlechTests(unittest.TestCase):
             P.excel_schreiben(P.Projekt(basis="T", zeichnungen=[z]), v, ziel)
             wb = openpyxl.load_workbook(ziel)
             ws = wb["SNP"]
-            self.assertEqual([ws["D7"].value, ws["D8"].value, ws["D9"].value], ["5mm / 10mm", "3,6mm / ?", None])
-            texte = [str(c.value) for row in wb["Protokoll"].iter_rows() for c in row if c.value]
+            # Nummern: A01 (HY) = 1 (= naehte[0]), B03 = 2, C05 = 3
+            self.assertEqual([ws["F7"].value, ws["F8"].value, ws["F9"].value], ["5mm / 10mm", "3,6mm / ?", None])
+            self.assertEqual(ws["D7"].value, "s15")                                          # Nahtdicke bleibt in Spalte D
+
+    def test_ohne_blech_spalte_hinweis_im_protokoll(self):
+        with tempfile.TemporaryDirectory() as d:
+            v = os.path.join(d, "v.xlsx"); vorlage(v, {k: t for k, t in KOPF.items() if k != "F"})
+            z = beispiel_zeichnung()
+            z.naehte[0].dicke_a, z.naehte[0].dicke_b = "5", "10"
+            for x in z.naehte:
+                P.bestaetigen(x)
+            ziel = os.path.join(d, "o.xlsx")
+            P.excel_schreiben(P.Projekt(basis="T", zeichnungen=[z]), v, ziel)
+            texte = [str(c.value) for row in openpyxl.load_workbook(ziel)["Protokoll"].iter_rows() for c in row if c.value]
+            self.assertTrue(any("Spalte für die Blechstärken" in t for t in texte))
             self.assertIn("5mm / 10mm", texte)
 
 

@@ -46,9 +46,26 @@ def vorlage_spalten(template):
     return labels, (get_column_letter(wc) if wc else None)
 
 
+_BLECH_RE = re.compile(r"blech|(material|werkstoff).{0,12}(dicke|st[äa]rke)|dicke|st[äa]rke|\bt\s?1\b", re.I)
+
+
+def blech_spalte(labels, wps_buchstabe=None):
+    """Buchstabe der Spalte für die Blechstärken beider Nahtpartner ("5mm / 10mm") anhand der Überschrift in der Vorlage,
+    oder None. Spalte D (Nahtdicke), die erkannten Spalten, WPS und die Güte-/Prüfklassen-Spalten kommen nicht in Frage."""
+    from . import pruefklassen
+    belegt = set(pruefklassen.rollen(labels))
+    for b, t in labels.items():
+        if b in ERKANNTE_SPALTEN or b == wps_buchstabe or b in belegt:
+            continue
+        if _BLECH_RE.search(t or ""):
+            return b
+    return None
+
+
 def zusatz_spalten(labels, wps_buchstabe):
-    """[(Buchstabe, Überschrift)] der Spalten, die von Hand ausgefüllt werden (ohne erkannte Spalten und ohne WPS-Spalte)."""
-    return [(b, t) for b, t in labels.items() if b not in ERKANNTE_SPALTEN and b != wps_buchstabe]
+    """[(Buchstabe, Überschrift)] der Spalten, die von Hand ausgefüllt werden (ohne erkannte Spalten, WPS- und Blechstärken-Spalte)."""
+    bl = blech_spalte(labels, wps_buchstabe)
+    return [(b, t) for b, t in labels.items() if b not in ERKANNTE_SPALTEN and b != wps_buchstabe and b != bl]
 
 
 def write_excel(template, out_path, groups, nr_in_remark=True):
@@ -73,6 +90,7 @@ def write_excel(template, out_path, groups, nr_in_remark=True):
     labels, _w = vorlage_spalten(template)
     rolle = pruefklassen.rollen(labels)
     spalte_von = {r: b for b, r in rolle.items()}
+    blech_col = blech_spalte(labels, get_column_letter(wps_col) if wps_col else None)
     prozent_spalten = {spalte_von[r] for r in ("ut", "mt", "vt") if r in spalte_von}
     style = {c: copy.copy(ws.cell(FIRST, c)._style) for c in range(1, 16)}
     height = ws.row_dimensions[FIRST].height
@@ -87,7 +105,7 @@ def write_excel(template, out_path, groups, nr_in_remark=True):
         ws.cell(r, 1).value = dn
         ws.cell(r, 2).value = f"{e.square}\n({e.nr})" if nr_in_remark else e.square
         ws.cell(r, 3).value = f"{e.art}\n{e.stoss}" if e.stoss else e.art
-        ws.cell(r, 4).value = getattr(e, "blech", "") or None      # Spalte D: Blechstärken beider Nahtpartner
+        ws.cell(r, 4).value = e.dicke or None
         ws.cell(r, 5).value = e.angabe
         for c in (2, 3, 5):   # Zeilenumbruch: Nr. unter Planquadrat, T-Stoß unter Nahtart, beidseitige Nähte untereinander
             al = copy.copy(ws.cell(r, c).alignment); al.wrap_text = True
@@ -95,6 +113,8 @@ def write_excel(template, out_path, groups, nr_in_remark=True):
         ws.cell(r, 8).value = e.gruppe
         if wps_col and e.wps:
             ws.cell(r, wps_col).value = e.wps
+        if blech_col and getattr(e, "blech", ""):
+            ws[f"{blech_col}{r}"].value = e.blech
         ws.cell(r, 15).value = ";\n".join(e.bemerkung) or None     # jeder Vermerk in eigener Zeile
         al = copy.copy(ws.cell(r, 15).alignment); al.wrap_text = True
         ws.cell(r, 15).alignment = al
@@ -117,6 +137,8 @@ def write_excel(template, out_path, groups, nr_in_remark=True):
     wp = wb.create_sheet("Protokoll")
     wp.append(["Zeichnungen", len(groups)]); wp.append(["Erkannte Nähte", len(entries_all)])
     wp.append(["davon zu prüfen", sum(1 for _, e in entries_all if not e.ok)])
+    if blech_col is None and any(getattr(e, "blech", "") for _, e in entries_all):
+        wp.append(["Hinweis", "Keine Spalte für die Blechstärken in der Vorlage gefunden (Überschrift mit Blech/Dicke/Stärke) - Werte stehen nur in diesem Protokoll"])
     if wps_col is None and any(e.wps for _, e in entries_all):
         wp.append(["Hinweis", "Spalte \"WPS\" in der Vorlage nicht gefunden - Zusatzinfo steht nur in diesem Protokoll"])
     for g in groups:

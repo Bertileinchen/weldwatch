@@ -32,7 +32,7 @@ class BeidseitigTests(unittest.TestCase):
     def test_einseitig_unveraendert(self):
         f = Found(x0=100, x1=160, y=300, sides={"up": seite("V-Naht", "20")})
         e = auswertung.build_entries([f], [], None, None, config.DEFAULTS)
-        self.assertEqual((len(e), e[0].angabe, e[0].dicke, e[0].bemerkung), (1, "V20", "", []))
+        self.assertEqual((len(e), e[0].angabe, e[0].dicke, e[0].bemerkung), (1, "V20", "s20", []))
 
 
 if __name__ == "__main__":
