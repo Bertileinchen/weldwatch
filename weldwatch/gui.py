@@ -11,7 +11,7 @@ from tkinter import ttk, filedialog, messagebox
 
 from PIL import ImageTk
 
-from . import __version__, abbruch, lauf, output, pruefklassen, teile
+from . import __version__, abbruch, lauf, output, pruefklassen
 from .changelog import CHANGELOG
 from . import projekt as P
 from .pdfansicht import Ansicht, PdfSeite
@@ -68,17 +68,6 @@ Fehlende Naht
 
 Alle angezeigten bestätigen
   Bestätigt alle in der Liste angezeigten, vollständigen Nähte auf einmal (mit Rückfrage). Mit Filter nur die gefilterten."""),
-    ("Blechstärken", """Blechstärken beider Nahtpartner ("5mm / 10mm")
-  1. Datei > STP-Datei laden: die 3D-Datei der Baugruppe (Teile und Dicke werden daraus berechnet).
-  2. Datei > Stücklisten (PDF) laden (oder Ordner mit Stücklisten): ordnet die Positionen der Zeichnung den Teilen zu.
-  3. Im Reiter "Naht" bei "Blech: Teil A" und "Teil B" die zwei Teile der Naht wählen (Tippen filtert die Liste).
-     Die Dicke wird vorgeschlagen und kann überschrieben werden. "(?)" = Wert unsicher, bitte prüfen.
-  4. "Teile wie vorige Naht" übernimmt die letzte Auswahl.
-  Ohne STP gibt es keine Vorschläge: Dicke A und B von Hand eintragen.
-
-Die Dicke stammt aus dem 3D-Modell (Abstand großer paralleler Flächen, bei Rundrohren Außen- minus Innenradius), nicht aus der
-Stückliste. Blechstärken ändern den Prüfstatus der Naht nicht. Die Excel-Spalte wird über ihre Überschrift in der Vorlage gefunden
-(Blech, Dicke oder Stärke; Spalte D = Nahtdicke bleibt unverändert). Fehlen Blechstärken, fragt das Programm vor dem Excel-Export."""),
     ("Zeichnungen und Filter", """Mehrere Zeichnungen
   Umschalten: Auswahlliste oben, Reiter (bis 8 Zeichnungen), Knöpfe "◀ Zeichnung / Zeichnung ▶" oder Strg+Bild auf / Bild ab.
   Die vorige Zeichnung muss nicht fertig sein.
@@ -224,10 +213,6 @@ class App:
         d.add_separator()
         d.add_command(label="Excel-Prüfplan erstellen ...", command=self.excel_exportieren)
         d.add_command(label="Excel-Vorlage wählen ...", command=self.vorlage_waehlen)
-        d.add_separator()
-        d.add_command(label="STP-Datei laden (Teile und Blechstärken) ...", command=self.stp_laden)
-        d.add_command(label="Stücklisten (PDF) laden ...", command=self.stuecklisten_laden)
-        d.add_command(label="Ordner mit Stücklisten laden ...", command=self.stuecklisten_ordner_laden)
         d.add_separator()
         d.add_command(label="Beenden", command=self.beenden)
         m.add_cascade(label="Datei", menu=d)
@@ -379,9 +364,7 @@ class App:
         self.extra_tab = ttk.Frame(self.nb, padding=6)
         self.extra_tab.columnconfigure(1, weight=1)
         self.nb.add(self.extra_tab, text="Prüfangaben")
-        self.v = {k: tk.StringVar() for k in ("square", "art", "stoss", "dicke", "gruppe", "wps", "bem",
-                                              "teil_a", "teil_b", "dicke_a", "dicke_b", "blech")}
-        self._wahl_map, self._wahl_key_map, self._wahl_labels, self._letzte_blech = {}, {}, [], None
+        self.v = {k: tk.StringVar() for k in ("square", "art", "stoss", "dicke", "gruppe", "wps", "bem")}
         self.f_widgets = []
         zeile = 0
 
@@ -399,22 +382,6 @@ class App:
         self.c_art = feld("Nahtart", ttk.Combobox(form, textvariable=self.v["art"], values=ARTEN))
         self.c_stoss = feld("Zusatz Nahtart", ttk.Combobox(form, textvariable=self.v["stoss"], values=["", "T-Stoß"]))
         self.e_dicke = feld("Dicke (Sp. D)", ttk.Entry(form, textvariable=self.v["dicke"], width=8))
-        self.c_teil_a = feld("Blech: Teil A", ttk.Combobox(form, textvariable=self.v["teil_a"], values=[]))
-        self.e_dicke_a = feld("Dicke A (mm)", ttk.Entry(form, textvariable=self.v["dicke_a"], width=8))
-        self.c_teil_b = feld("Blech: Teil B", ttk.Combobox(form, textvariable=self.v["teil_b"], values=[]))
-        self.e_dicke_b = feld("Dicke B (mm)", ttk.Entry(form, textvariable=self.v["dicke_b"], width=8))
-        for k in ("dicke_a", "dicke_b"):
-            self.v[k].trace_add("write", lambda *a: self._blech_anzeigen())
-        self.lbl_blech = ttk.Label(form, textvariable=self.v["blech"], font=self.f_fett)
-        self.lbl_blech.grid(row=zeile, column=1, sticky="w", pady=(0, 2))
-        zeile += 1
-        self.btn_blech_vorige = ttk.Button(form, text="Teile wie vorige Naht", command=self.blech_wie_vorige)
-        self.btn_blech_vorige.grid(row=zeile, column=1, sticky="w", pady=(0, 4))
-        self.f_widgets.append(self.btn_blech_vorige)
-        zeile += 1
-        for w, k in ((self.c_teil_a, "dicke_a"), (self.c_teil_b, "dicke_b")):
-            w.bind("<<ComboboxSelected>>", lambda e, w=w, k=k: self._teil_gewaehlt(w, k))
-            w.bind("<KeyRelease>", self._teil_filtern)
         self.t_angabe = feld("Zeichnungs-\nangabe", tk.Text(form, height=2, width=20, wrap="word", undo=True))
         self.c_gruppe = feld("Werkstoffgruppe", ttk.Combobox(form, textvariable=self.v["gruppe"], values=GRUPPEN))
         self.e_wps = feld("WPS\n(vorbelegt: Winkel)", ttk.Entry(form, textvariable=self.v["wps"], width=16))
@@ -555,141 +522,6 @@ class App:
             if r in self.x_umfang:
                 self.x_umfang[r].set(w)
 
-    # ------------------------------------------------------------------------------------------------ Blechstärken (Teile aus STP/Stückliste)
-    def _katalog(self):
-        return self.p.katalog if self.p is not None else None
-
-    def _wahlen_aufbauen(self):
-        """Auswahlliste 'Teil A / Teil B' für die aktuelle Zeichnung (zuerst die Positionen ihrer Stückliste)."""
-        k = self._katalog()
-        wahlen = k.wahlen(self.z.dn if self.z else "") if k is not None else []
-        self._wahl_map = {w.label: w for w in wahlen}
-        self._wahl_key_map = {w.key: w for w in wahlen}
-        self._wahl_labels = [w.label for w in wahlen]
-        for c in (self.c_teil_a, self.c_teil_b):
-            c.configure(values=self._wahl_labels)
-
-    def _wahl_label(self, key):
-        w = self._wahl_key_map.get(key) if key else None
-        return w.label if w else (key or "")
-
-    def _wahl_key(self, label):
-        label = (label or "").strip()
-        w = self._wahl_map.get(label)
-        return w.key if w else label       # freier Text bleibt erhalten
-
-    def _teil_gewaehlt(self, combo, dicke_key):
-        w = self._wahl_map.get(combo.get().strip())
-        if w is not None:
-            self.v[dicke_key].set(w.dicke_text)
-            if w.dicke is None or w.status != "ok":
-                self._status(f"Dicke prüfen: {w.hinweis or 'kein Wert vorhanden'}")
-        combo.configure(values=self._wahl_labels)
-
-    def _teil_filtern(self, ev):
-        """Tippen im Feld Teil A/B filtert die Auswahlliste (Teile der Liste, die den Text enthalten)."""
-        if ev.keysym in ("Return", "Tab", "Up", "Down", "Left", "Right", "Escape", "Shift_L", "Shift_R", "Control_L", "Control_R"):
-            return
-        t = ev.widget.get().strip().lower()
-        ev.widget.configure(values=[l for l in self._wahl_labels if t in l.lower()] if t else self._wahl_labels)
-
-    def _blech_anzeigen(self):
-        t = teile.blech_text(self.v["dicke_a"].get(), self.v["dicke_b"].get())
-        self.v["blech"].set(f"Blechstärken: {t}" if t else "Blechstärken: -")
-
-    def blech_wie_vorige(self):
-        if self._letzte_blech is None or self._naht() is None:
-            self._status("Es gibt noch keine vorige Naht mit Blechstärken.")
-            return
-        a, b, da, db = self._letzte_blech
-        self.v["teil_a"].set(self._wahl_label(a))
-        self.v["teil_b"].set(self._wahl_label(b))
-        self.v["dicke_a"].set(da)
-        self.v["dicke_b"].set(db)
-
-    def _katalog_geaendert(self, text):
-        self._form_anwenden(False)         # offene Eingaben sichern, bevor die Auswahlliste neu aufgebaut wird
-        self._wahlen_aufbauen()
-        self._sichern()
-        self._status(text)
-        self._form_fuellen(self._naht())
-
-    def stp_laden(self):
-        if self.busy:
-            return
-        if self.p is None:
-            messagebox.showinfo("STP", "Es ist kein Projekt geöffnet.", parent=self.root)
-            return
-        pfad = filedialog.askopenfilename(parent=self.root, title="STP-Datei der Baugruppe wählen",
-                                          filetypes=[("STEP-Datei", "*.stp *.step"), ("Alle Dateien", "*.*")])
-        if not pfad:
-            return
-
-        def arbeit(fort):
-            from .stp import lese_stp
-            fort("Lese STP und berechne Blechstärken ...")
-            return lese_stp(pfad)
-
-        def danach(tl):
-            if self.p.katalog is None:
-                self.p.katalog = teile.Katalog()
-            self.p.katalog.stp_setzen(tl, pfad)
-            unsicher = sum(1 for t in tl if t.status != "ok")
-            self._zeichnen_alles()
-            self._katalog_geaendert(f"STP geladen: {len(tl)} Teile, bei {unsicher} ist die Dicke unsicher oder fehlt.")
-
-        self._starte_job("Lese STP ...", arbeit, danach, hinweis="(dauert bei großen Dateien einige Sekunden)", titel="STP konnte nicht gelesen werden")
-
-    def _stuecklisten_einlesen(self, dateien):
-        if self.busy or not dateien:
-            return
-        if self.p is None:
-            messagebox.showinfo("Stücklisten", "Es ist kein Projekt geöffnet.", parent=self.root)
-            return
-
-        def arbeit(fort):
-            from .stueckliste import lese_stueckliste
-            ergebnis, fehler = [], []
-            for i, f in enumerate(dateien):
-                fort(f"Stückliste {os.path.basename(f)} ({i + 1}/{len(dateien)}) ...")
-                try:
-                    zng, zeilen = lese_stueckliste(f)
-                    if zng and zeilen:
-                        ergebnis.append((zng, zeilen))
-                    else:
-                        fehler.append(os.path.basename(f))
-                except Exception as ex:
-                    fehler.append(f"{os.path.basename(f)}: {ex}")
-            return ergebnis, fehler
-
-        def danach(res):
-            ergebnis, fehler = res
-            if self.p.katalog is None:
-                self.p.katalog = teile.Katalog()
-            for zng, zeilen in ergebnis:
-                self.p.katalog.stueckliste_hinzu(zng, zeilen)
-            self._zeichnen_alles()
-            self._katalog_geaendert(f"{len(ergebnis)} Stückliste(n) geladen.")
-            if fehler:
-                messagebox.showwarning("Stücklisten", "Nicht gelesen (keine Stückliste erkannt):\n" + "\n".join(fehler[:15]), parent=self.root)
-
-        self._starte_job("Lese Stücklisten ...", arbeit, danach, titel="Stücklisten konnten nicht gelesen werden")
-
-    def stuecklisten_laden(self):
-        dateien = filedialog.askopenfilenames(parent=self.root, title="Stücklisten (PDF) wählen",
-                                              filetypes=[("Stücklisten", "*STKL.pdf"), ("PDF", "*.pdf")])
-        self._stuecklisten_einlesen(list(dateien))
-
-    def stuecklisten_ordner_laden(self):
-        ordner = filedialog.askdirectory(parent=self.root, title="Ordner mit Stücklisten (PDF) wählen")
-        if not ordner:
-            return
-        dateien = sorted(os.path.join(ordner, f) for f in os.listdir(ordner) if f.lower().endswith("stkl.pdf"))
-        if not dateien:
-            messagebox.showinfo("Stücklisten", "Im Ordner liegen keine Dateien, die auf 'STKL.pdf' enden.", parent=self.root)
-            return
-        self._stuecklisten_einlesen(dateien)
-
     def vorlage_waehlen(self):
         if self.p is None:
             messagebox.showinfo("Excel-Vorlage", "Es ist kein Projekt geöffnet.", parent=self.root)
@@ -820,7 +652,6 @@ class App:
                 self.seite = None
                 self._status(f"PDF kann nicht angezeigt werden: {ex}")
         self.var_dn.set(z.dn if z else "")
-        self._wahlen_aufbauen()
         for v in self.filter_vars.values():
             v.set(ALLE)
         self._combo_aktualisieren()
@@ -916,7 +747,6 @@ class App:
     def _dn_uebernehmen(self, _e=None):
         if self.z is not None and self.var_dn.get().strip() != self.z.dn:
             self.z.dn = self.var_dn.get().strip()
-            self._wahlen_aufbauen()
             self._sichern()
 
     # ------------------------------------------------------------------------------------------------ Liste
@@ -1031,10 +861,6 @@ class App:
         self.v["gruppe"].set(n.gruppe)
         self.v["wps"].set(n.wps)
         self.v["bem"].set("; ".join(n.bemerkung))
-        self.v["teil_a"].set(self._wahl_label(n.teil_a))
-        self.v["teil_b"].set(self._wahl_label(n.teil_b))
-        self.v["dicke_a"].set(n.dicke_a)
-        self.v["dicke_b"].set(n.dicke_b)
         for b, var in self.extra_vars.items():
             standard = {"cp": pruefklassen.STANDARD_CP, "ct": pruefklassen.STANDARD_CT}.get(self.x_rollen.get(b), "")
             var.set(n.extra.get(b) or standard)
@@ -1060,8 +886,6 @@ class App:
         return dict(square=self.v["square"].get().strip(), art=self.v["art"].get().strip(), stoss=self.v["stoss"].get().strip(),
                     dicke=self.v["dicke"].get().strip(), angabe=self.t_angabe.get("1.0", "end-1c").strip(),
                     gruppe=self.v["gruppe"].get().strip(), wps=self.v["wps"].get().strip(), bem=self.v["bem"].get().strip(),
-                    teil_a=self._wahl_key(self.v["teil_a"].get()), teil_b=self._wahl_key(self.v["teil_b"].get()),
-                    dicke_a=self.v["dicke_a"].get().strip(), dicke_b=self.v["dicke_b"].get().strip(),
                     x={b: v.get().strip() for b, v in self.extra_vars.items()})
 
     def _form_anwenden(self, bestaetigen):
@@ -1089,9 +913,6 @@ class App:
                       angabe=w["angabe"], gruppe=w["gruppe"], bemerkung=w["bem"])
         # WPS und weitere Excel-Spalten sind reine Eingabedaten: ändern den Prüfstatus nicht
         n.wps = w["wps"]
-        n.teil_a, n.teil_b, n.dicke_a, n.dicke_b = w["teil_a"], w["teil_b"], w["dicke_a"], w["dicke_b"]
-        if n.dicke_a or n.dicke_b or n.teil_a or n.teil_b:
-            self._letzte_blech = (n.teil_a, n.teil_b, n.dicke_a, n.dicke_b)
         P.extras_setzen(n, w["x"])
         self._snap = self._form_werte()
         self._nach_aenderung()
@@ -1762,12 +1583,6 @@ class App:
                 "Die Excel-Liste gibt es erst nach vollständiger Prüfung.\n\nIch springe zur nächsten offenen Naht.",
                 parent=self.root)
             self.naechste_offene()
-            return
-        ohne = self.p.anzahl_ohne_blech()
-        if ohne and not messagebox.askyesno(
-                "Blechstärken fehlen",
-                f"Bei {ohne} von {self.p.anzahl_aktiv()} Nähten fehlen Blechstärken (Teil A / Teil B).\n\n"
-                "Excel-Liste trotzdem erstellen? (Fehlende Werte erscheinen leer bzw. als '?')", parent=self.root):
             return
         vorlage = self.p.vorlage or lauf.default_vorlage()
         if not os.path.exists(vorlage):
